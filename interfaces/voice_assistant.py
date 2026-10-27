@@ -80,7 +80,7 @@ async def main():
             # Adiciona ao fluxo unificado de consciência
             await session.add_user_message(source="voice", content=user_speech)
 
-            # Chama o cérebro com as mensagens sincronizadas (Discord + Voz)
+            # Chama o cérebro com as mensagens sincronizadas (Discord + Voz) em Streaming por Sentença
             print("🧠 [Aigis processando...]")
             t_llm_start = time.perf_counter()
             tokens = []
@@ -106,20 +106,51 @@ async def main():
                     pass
 
             tools_executed = []
+            buffer_frase = []
+            first_audio_played = False
+            t_first_token = None
+
+            print("\n🗣️ [Aigis Falando]: ", end="", flush=True)
+
             async for token in chat(
                 sync_messages,
                 user_id=session.context.user.user_id,
                 on_tool_start=handle_tool_feedback,
                 executed_tools_collector=tools_executed,
             ):
-                tokens.append(token)
+                if t_first_token is None:
+                    t_first_token = (time.perf_counter() - t_llm_start) * 1000
 
+                tokens.append(token)
+                buffer_frase.append(token)
+                print(token, end="", flush=True)
+
+                texto_acumulado = "".join(buffer_frase)
+                # Dispara a síntese vocal imediatamente ao encontrar uma pontuação de fim de sentença
+                if (
+                    any(p in texto_acumulado for p in (".", "!", "?", "\n"))
+                    and len(texto_acumulado.strip()) > 3
+                ):
+                    frase_para_falar = texto_acumulado.strip()
+                    buffer_frase = []
+                    await synth.speak(frase_para_falar, play_audio=True)
+                    if not first_audio_played:
+                        first_audio_played = True
+
+            # Fala qualquer resto pendente no buffer
+            resto = "".join(buffer_frase).strip()
+            if resto:
+                await synth.speak(resto, play_audio=True)
+
+            print()
             dt_llm = (time.perf_counter() - t_llm_start) * 1000
             resposta_completa = "".join(tokens).strip()
             if not resposta_completa:
                 resposta_completa = "Comando processado com sucesso, mestre."
 
-            print(f"⏱️ [Tempo de Resposta do Texto/LLM]: {dt_llm:.1f}ms")
+            if t_first_token is not None:
+                print(f"⏱️ [Tempo até Primeiro Token]: {t_first_token:.1f}ms")
+            print(f"⏱️ [Tempo Total de Processamento]: {dt_llm:.1f}ms")
             meta = {}
             if tools_executed:
                 meta = {
@@ -127,12 +158,6 @@ async def main():
                     "tool_results": [item["result"] for item in tools_executed],
                 }
             await session.add_assistant_message(resposta_completa, metadata=meta)
-
-            # Sintetiza a resposta inteira em ordem (garante coerência auditiva)
-            t_tts_start = time.perf_counter()
-            await speak_notification(synth, resposta_completa)
-            dt_tts = (time.perf_counter() - t_tts_start) * 1000
-            print(f"⏱️ [Tempo de Síntese Vocal Aigis]: {dt_tts:.1f}ms")
 
     except (KeyboardInterrupt, asyncio.CancelledError):
         pass

@@ -268,7 +268,6 @@ async def chat(
             "content": f"{pergunta}\n{temporal_info}",
         }
 
-    # 2. Loop de raciocínio (ReAct)
     # Detecta se o turno atual exige esquemas de ferramentas ou se é conversa pura
     user_query = ""
     for m in reversed(payload_messages):
@@ -278,6 +277,22 @@ async def chat(
 
     active_tools = ALL_TOOL_SCHEMAS if should_enable_tools(user_query) else None
 
+    # Se não houver ferramentas ativas, podemos fazer streaming imediato desde o início
+    if active_tools is None:
+        stream = await client.chat.completions.create(
+            model=MODEL_ALIAS,
+            messages=payload_messages,
+            temperature=0.2,
+            max_tokens=1000,
+            stream=True,
+        )
+        async for chunk in stream:
+            token = chunk.choices[0].delta.content or ""
+            if token:
+                yield token
+        return
+
+    # 2. Loop de raciocínio (ReAct) com ferramentas ativas
     for _ in range(max_tool_steps):
         req_kwargs = {
             "model": MODEL_ALIAS,
