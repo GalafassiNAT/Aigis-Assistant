@@ -103,11 +103,11 @@ def execute_command(command: str, timeout_seconds: int = 15) -> str:
     """
     # Guardrail contra comandos destrutivos acidentais
     BLOCKED_PATTERNS = [
-        r"format\s+",
-        r"del\s+/[sS]\s+",
-        r"rmdir\s+/[sS]\s+",
+        r"\bformat\s+[a-zA-Z]:",
+        r"\bdel\s+/[sS]\s+",
+        r"\brmdir\s+/[sS]\s+",
         r"Remove-Item\s+.*-Recurse\s+.*[cC]:",
-        r"drop\s+database",
+        r"\bdrop\s+database\b",
     ]
 
     for pat in BLOCKED_PATTERNS:
