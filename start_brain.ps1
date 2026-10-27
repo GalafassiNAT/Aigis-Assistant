@@ -8,7 +8,7 @@ $modelFile    = Join-Path $PSScriptRoot "models\aigis-qwen-7b-q4_k_m.gguf"
 if (Test-Path $vulkanServer) {
     $llamaServer = $vulkanServer
     $backendName = "Vulkan (GPU Shaders + Flash Attention - Ultrarrápido)"
-    $extraArgs = @("-fa", "-b", "2048", "-ub", "512")
+    $extraArgs = @("-fa", "on", "-b", "2048", "-ub", "512")
 } elseif (Test-Path $rocmServer) {
     $llamaServer = $rocmServer
     $backendName = "ROCm / HIP"
