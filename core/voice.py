@@ -148,33 +148,8 @@ class VoiceSynthesizer:
             )
             sf.write(output_pcm_path, samples, sr, format="WAV", subtype="PCM_16")
             pitch_shift = 0.0
-        elif lang == "pt" and self.kokoro is not None:
-            # Síntese local offline em português via Kokoro pf_dora (latência ~500ms, sem internet)
-            try:
-                samples, sr = self.kokoro.create(
-                    clean_text, voice="pf_dora", speed=1.0, lang="pt-br"
-                )
-                sf.write(output_pcm_path, samples, sr, format="WAV", subtype="PCM_16")
-                pitch_shift = 0.0
-            except Exception as e:
-                logger.warning(
-                    f"[VoiceSynthesizer] Erro no Kokoro PT-BR ({e}). Utilizando fallback Edge-TTS..."
-                )
-                temp_raw = output_pcm_path + ".raw.mp3"
-                communicate = edge_tts.Communicate(clean_text, self.voice_pt, rate="-4%", pitch="-1Hz")
-                await communicate.save(temp_raw)
-                try:
-                    data, fs = sf.read(temp_raw)
-                    sf.write(output_pcm_path, data, fs, format="WAV", subtype="PCM_16")
-                finally:
-                    if os.path.exists(temp_raw):
-                        try:
-                            os.remove(temp_raw)
-                        except OSError:
-                            pass
-                pitch_shift = 0.0
         else:
-            # Francisca idêntica à de test_aigis_intro.wav (ritmo e tom limpos e contínuos)
+            # Francisca idêntica à de test_aigis_intro.wav (calibração pura da persona Aigis)
             temp_raw = output_pcm_path + ".raw.mp3"
             communicate = edge_tts.Communicate(clean_text, self.voice_pt, rate="-4%", pitch="-1Hz")
             await communicate.save(temp_raw)
