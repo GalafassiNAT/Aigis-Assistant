@@ -26,11 +26,54 @@ def load_system_prompt() -> str:
     return Path("prompts/system.md").read_text(encoding="utf-8")
 
 
+def should_enable_tools(user_text: str) -> bool:
+    """
+    Roteador rápido de intenção:
+    Se a fala for apenas conversação casual, cumprimento ou alívio (ex: 'oi', 'bom dia', 'boa deu certo'),
+    desativa os esquemas de ferramentas para permitir que o modelo responda em ~1 segundo.
+    Se contiver intenção de ação (arquivos, comandos, pesquisas, leituras), ativa as ferramentas.
+    """
+    texto = user_text.lower()
+    # Padrões que exigem ferramentas ativas
+    ACTION_PATTERNS = [
+        r"\b(cria|crie|criar|criando)\b",
+        r"\b(apaga|apague|apagar|deleta|delete|deletar)\b",
+        r"\b(remove|remova|remover|exclui|exclua|excluir)\b",
+        r"\b(l[eê]|leia|ler|mostra|mostre|listar|lista)\b",
+        r"\b(pesquisa|pesquise|pesquisar|busca|busque|buscar|procura|procure)\b",
+        r"\b(executa|execute|executar|roda|rode|rodar)\b",
+        r"\b(arquivo|pasta|diret[oó]rio|vault|nota|script|processo)\b",
+        r"\.txt\b|\.md\b|\.py\b|\.json\b",
+    ]
+    return any(re.search(p, texto) for p in ACTION_PATTERNS)
+
+
 async def recuperar_contexto_memoria(pergunta: str, user_id: str | None = None) -> str:
     """
     Busca no PostgreSQL (Grafo de Conhecimento + pgvector) fatos e memórias relevantes
-    para a pergunta atual do usuário em ~5ms.
+    apenas se a pergunta demonstrar necessidade de resgate factual.
     """
+    texto = pergunta.lower()
+    # Se for apenas saudação ou confirmação, não polui o prompt com tripletos
+    if not any(
+        k in texto
+        for k in (
+            "quem",
+            "qual",
+            "onde",
+            "quando",
+            "como",
+            "lembra",
+            "projeto",
+            "nick",
+            "discord",
+            "obsidian",
+            "rlos",
+            "você sabe",
+        )
+    ):
+        return ""
+
     try:
         from core.context import get_local_user
         from memory.embeddings import get_embedding
@@ -43,7 +86,7 @@ async def recuperar_contexto_memoria(pergunta: str, user_id: str | None = None) 
 
         # 1. Fatos do Grafo (Prioridade máxima: fatos atômicos consolidados)
         tripletos = await storage.get_all_triplets(user_id=uid)
-        for t in tripletos[:25]:
+        for t in tripletos[:15]:
             fato = f"{t.subject} -> {t.predicate} -> {t.object}"
             if fato not in vistos:
                 vistos.add(fato)
@@ -52,7 +95,7 @@ async def recuperar_contexto_memoria(pergunta: str, user_id: str | None = None) 
         # 2. Busca vetorial por similaridade semântica (threshold calibrado para PT-BR: 0.25)
         query_vec = get_embedding(pergunta)
         memorias = await storage.search_memories(
-            query_vec, limit=3, min_similarity=0.25, user_id=uid
+            query_vec, limit=2, min_similarity=0.30, user_id=uid
         )
         for m in memorias:
             if m.content not in vistos:
@@ -200,7 +243,7 @@ async def chat(
     3. Entrega a resposta final em streaming.
     4. Grava metadados de ferramentas executadas para persistência de contexto.
     """
-    # 1. Cria cópia do payload e injeta data/hora atual em tempo real em PT-BR + memórias relevantes
+    # 1. Carrega o System Prompt ESTÁTICO (preserva 100% do cache de prefixo na VRAM do llama-server)
     from core.clock import get_now_ptbr
 
     now_str = get_now_ptbr()
@@ -209,39 +252,44 @@ async def chat(
     if not payload_messages or payload_messages[0].get("role") != "system":
         payload_messages.insert(0, {"role": "system", "content": load_system_prompt()})
 
-    sys_content = payload_messages[0]["content"]
-    # Atualiza ou adiciona o carimbo de tempo real apenas na data
-    today_date = now_str.split(" às ")[0] if " às " in now_str else now_str
-    if "# Contexto Temporal do Sistema" in sys_content:
-        sys_content = re.sub(
-            r"# Contexto Temporal do Sistema\nHoje é:.*?\n",
-            f"# Contexto Temporal do Sistema\nHoje é: {today_date}\n",
-            sys_content,
-        )
-    else:
-        sys_content = f"# Contexto Temporal do Sistema\nHoje é: {today_date}\n\n" + sys_content
-    payload_messages[0] = {"role": "system", "content": sys_content}
-
+    # O System Prompt permanece 100% puro e fixo na posição 0 para garantir Prompt Caching na GPU.
+    # O relógio biológico exato (hora/minuto) e a memória de longo prazo são anexados
+    # no final da mensagem do usuário atual (posição dinâmica).
     if payload_messages and payload_messages[-1].get("role") == "user":
         pergunta = payload_messages[-1].get("content") or ""
         contexto_memoria = await recuperar_contexto_memoria(pergunta, user_id=user_id)
 
-        if contexto_memoria and payload_messages[0].get("role") == "system":
-            payload_messages[0] = {
-                "role": "system",
-                "content": payload_messages[0]["content"] + contexto_memoria,
-            }
+        temporal_info = f"\n[Relógio do Sistema: {now_str}]"
+        if contexto_memoria:
+            temporal_info += f"\n[Memória Recuperada:\n{contexto_memoria}]"
+
+        payload_messages[-1] = {
+            "role": "user",
+            "content": f"{pergunta}\n{temporal_info}",
+        }
 
     # 2. Loop de raciocínio (ReAct)
+    # Detecta se o turno atual exige esquemas de ferramentas ou se é conversa pura
+    user_query = ""
+    for m in reversed(payload_messages):
+        if m.get("role") == "user":
+            user_query = m.get("content", "")
+            break
+
+    active_tools = ALL_TOOL_SCHEMAS if should_enable_tools(user_query) else None
+
     for _ in range(max_tool_steps):
-        response = await client.chat.completions.create(
-            model=MODEL_ALIAS,
-            messages=payload_messages,
-            tools=ALL_TOOL_SCHEMAS,
-            temperature=0.2,
-            max_tokens=1000,
-            stream=False,
-        )
+        req_kwargs = {
+            "model": MODEL_ALIAS,
+            "messages": payload_messages,
+            "temperature": 0.2,
+            "max_tokens": 1000,
+            "stream": False,
+        }
+        if active_tools is not None:
+            req_kwargs["tools"] = active_tools
+
+        response = await client.chat.completions.create(**req_kwargs)
 
         response_message = response.choices[0].message
         func_name, func_args, tool_id = extrair_tool_call(response_message)
