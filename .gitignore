@@ -1,0 +1,39 @@
+# Ambientes e Segredos
+.env
+.env.local
+*.env
+
+# Python & Caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.vscode/
+
+# Ambientes Virtuais & Gerenciadores
+env/
+venv/
+.venv/
+mambafs*
+
+# Modelos Pesados & Pesos Neurais (Downloads locais)
+models/kokoro/*.onnx
+models/kokoro/*.bin
+models/rvc/*.pt
+models/rvc/*.pth
+models/rvc/*.onnx
+models/rvc/*.zip
+models/rvc/aigis/*.pth
+models/rvc/aigis/*.onnx
+models/rvc/aigis/*.zip
+models/rvc/aigis/*.index
+models/rvc/.cache/
+
+# Áudios e Arquivos Temporários de Teste
+*.wav
+*.mp3
+*.npy
+data/inbox/
+output/audio/
+temp/
