@@ -210,15 +210,16 @@ async def chat(
         payload_messages.insert(0, {"role": "system", "content": load_system_prompt()})
 
     sys_content = payload_messages[0]["content"]
-    # Atualiza ou adiciona o carimbo de tempo real do SO a cada turno de conversa
+    # Atualiza ou adiciona o carimbo de tempo real apenas na data
+    today_date = now_str.split(" às ")[0] if " às " in now_str else now_str
     if "# Contexto Temporal do Sistema" in sys_content:
         sys_content = re.sub(
             r"# Contexto Temporal do Sistema\nHoje é:.*?\n",
-            f"# Contexto Temporal do Sistema\nHoje é: {now_str}\n",
+            f"# Contexto Temporal do Sistema\nHoje é: {today_date}\n",
             sys_content,
         )
     else:
-        sys_content = f"# Contexto Temporal do Sistema\nHoje é: {now_str}\n\n" + sys_content
+        sys_content = f"# Contexto Temporal do Sistema\nHoje é: {today_date}\n\n" + sys_content
     payload_messages[0] = {"role": "system", "content": sys_content}
 
     if payload_messages and payload_messages[-1].get("role") == "user":
