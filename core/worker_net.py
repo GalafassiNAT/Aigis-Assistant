@@ -60,8 +60,10 @@ except Exception as e:
 
 for line in sys.stdin:
     line = line.strip()
-    if not line or line == "QUIT":
+    if line == "QUIT":
         break
+    if not line:
+        continue
     try:
         req = json.loads(line)
         audio = fast_load_16k(req["input_wav"])

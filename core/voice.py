@@ -190,7 +190,13 @@ class VoiceSynthesizer:
             self.proc_hubert.stdin.flush()
             line1 = self.proc_hubert.stdout.readline()
             if not line1:
-                raise RuntimeError(f"HuBERT worker caiu: {self.proc_hubert.stderr.read()}")
+                logger.warning("[VoiceSynthesizer] HuBERT worker desconectou. Reiniciando daemon...")
+                self._start_hubert()
+                self.proc_hubert.stdin.write(json.dumps(req1) + "\n")
+                self.proc_hubert.stdin.flush()
+                line1 = self.proc_hubert.stdout.readline()
+                if not line1:
+                    raise RuntimeError(f"HuBERT worker caiu: {self.proc_hubert.stderr.read()}")
             r1 = json.loads(line1)
             if r1.get("status") != "ok":
                 raise RuntimeError(f"Erro no estágio HuBERT: {r1.get('message')}")
@@ -206,8 +212,14 @@ class VoiceSynthesizer:
             self.proc_net.stdin.flush()
             line2 = self.proc_net.stdout.readline()
             if not line2:
-                err_net = self.proc_net.stderr.read()
-                raise RuntimeError(f"Aigis Net worker caiu (rc={self.proc_net.poll()}): {err_net}")
+                logger.warning("[VoiceSynthesizer] Aigis Net worker desconectou. Reiniciando daemon...")
+                self._start_net()
+                self.proc_net.stdin.write(json.dumps(req2) + "\n")
+                self.proc_net.stdin.flush()
+                line2 = self.proc_net.stdout.readline()
+                if not line2:
+                    err_net = self.proc_net.stderr.read()
+                    raise RuntimeError(f"Aigis Net worker caiu (rc={self.proc_net.poll()}): {err_net}")
             r2 = json.loads(line2)
             if r2.get("status") != "ok":
                 raise RuntimeError(f"Erro na síntese da Aigis: {r2.get('message')}")
