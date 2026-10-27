@@ -1,10 +1,7 @@
-import os
+import gc
+import json
 import sys
 import traceback
-
-os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
-
-import json
 
 import numpy as np
 import onnxruntime as ort
@@ -162,6 +159,8 @@ for line in sys.stdin:
             audio_out = audio_out * (0.95 / max_val)
 
         sf.write(req["output_wav"], audio_out, tgt_sr)
+        del audio, f0, feats_raw, feats_t, feats, feats_ready, pitch_ready, pitchf_ready, audio_out
+        gc.collect()
         print(json.dumps({"status": "ok"}))
         sys.stdout.flush()
     except Exception as e:

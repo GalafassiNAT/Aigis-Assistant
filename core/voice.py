@@ -36,6 +36,7 @@ class VoiceSynthesizer:
         os.makedirs(self.output_dir, exist_ok=True)
 
         logger.info("[VoiceSynthesizer] Inicializando daemons vocais da Aigis em memória...")
+        self.inferences_count = 0
         self._start_hubert()
         self._start_net()
 
@@ -166,19 +167,90 @@ class VoiceSynthesizer:
 
         return lang, pitch_shift
 
+    def _restart_net(self):
+        if hasattr(self, "proc_net") and self.proc_net and self.proc_net.poll() is None:
+            try:
+                self.proc_net.stdin.write("QUIT\n")
+                self.proc_net.stdin.flush()
+                self.proc_net.wait(timeout=2)
+            except Exception:
+                try:
+                    self.proc_net.kill()
+                except Exception:
+                    pass
+        self._start_net()
+
+    def _restart_hubert(self):
+        if hasattr(self, "proc_hubert") and self.proc_hubert and self.proc_hubert.poll() is None:
+            try:
+                self.proc_hubert.stdin.write("QUIT\n")
+                self.proc_hubert.stdin.flush()
+                self.proc_hubert.wait(timeout=2)
+            except Exception:
+                try:
+                    self.proc_hubert.kill()
+                except Exception:
+                    pass
+        self._start_hubert()
+
+    def _send_hubert(self, req: dict) -> dict:
+        for attempt in range(2):
+            if self.proc_hubert.poll() is not None:
+                logger.warning("[VoiceSynthesizer] Daemon HuBERT inativo. Reiniciando...")
+                self._restart_hubert()
+            try:
+                self.proc_hubert.stdin.write(json.dumps(req) + "\n")
+                self.proc_hubert.stdin.flush()
+                line = self.proc_hubert.stdout.readline()
+                if not line:
+                    raise RuntimeError("HuBERT worker retornou resposta vazia.")
+                res = json.loads(line)
+                if res.get("status") != "ok":
+                    raise RuntimeError(f"Erro no estágio HuBERT: {res.get('message')}")
+                return res
+            except Exception as e:
+                logger.warning(
+                    f"[VoiceSynthesizer] Falha de comunicação no HuBERT ({e}). Reiniciando daemon..."
+                )
+                self._restart_hubert()
+                if attempt == 1:
+                    raise
+
+    def _send_net(self, req: dict) -> dict:
+        self.inferences_count += 1
+        # Recicla preventivamente o daemon a cada 25 inferências para evitar sobrecarga no DirectML
+        if self.inferences_count >= 25:
+            logger.info("[VoiceSynthesizer] Reciclando daemon DirectML preventivamente...")
+            self._restart_net()
+            self.inferences_count = 0
+
+        for attempt in range(2):
+            if self.proc_net.poll() is not None:
+                logger.warning("[VoiceSynthesizer] Daemon Net inativo. Reiniciando...")
+                self._restart_net()
+            try:
+                self.proc_net.stdin.write(json.dumps(req) + "\n")
+                self.proc_net.stdin.flush()
+                line = self.proc_net.stdout.readline()
+                if not line:
+                    raise RuntimeError("Aigis Net worker retornou resposta vazia.")
+                res = json.loads(line)
+                if res.get("status") != "ok":
+                    raise RuntimeError(f"Erro na síntese da Aigis: {res.get('message')}")
+                return res
+            except Exception as e:
+                logger.warning(
+                    f"[VoiceSynthesizer] Falha de comunicação no Aigis Net ({e}). Reiniciando daemon..."
+                )
+                self._restart_net()
+                if attempt == 1:
+                    raise
+
     def convert_voice(
         self, input_wav_path: str, output_wav_path: str, pitch_shift: float = 0.0
     ) -> str:
         timestamp = int(time.time() * 1000)
         temp_feats = os.path.join(self.output_dir, f"temp_feats_{timestamp}.npy")
-
-        # Recuperação resiliente automática caso algum daemon tenha sido encerrado pelo SO
-        if self.proc_hubert.poll() is not None:
-            logger.warning("[VoiceSynthesizer] Reiniciando HuBERT worker...")
-            self._start_hubert()
-        if self.proc_net.poll() is not None:
-            logger.warning("[VoiceSynthesizer] Reiniciando Aigis Net worker...")
-            self._start_net()
 
         try:
             # 1. HuBERT Feature Extraction
@@ -186,20 +258,7 @@ class VoiceSynthesizer:
                 "input_wav": os.path.abspath(input_wav_path),
                 "output_npy": os.path.abspath(temp_feats),
             }
-            self.proc_hubert.stdin.write(json.dumps(req1) + "\n")
-            self.proc_hubert.stdin.flush()
-            line1 = self.proc_hubert.stdout.readline()
-            if not line1:
-                logger.warning("[VoiceSynthesizer] HuBERT worker desconectou. Reiniciando daemon...")
-                self._start_hubert()
-                self.proc_hubert.stdin.write(json.dumps(req1) + "\n")
-                self.proc_hubert.stdin.flush()
-                line1 = self.proc_hubert.stdout.readline()
-                if not line1:
-                    raise RuntimeError(f"HuBERT worker caiu: {self.proc_hubert.stderr.read()}")
-            r1 = json.loads(line1)
-            if r1.get("status") != "ok":
-                raise RuntimeError(f"Erro no estágio HuBERT: {r1.get('message')}")
+            self._send_hubert(req1)
 
             # 2. Pitch Tracking + Aigis Net Synthesis acelerado na GPU DirectML
             req2 = {
@@ -208,21 +267,7 @@ class VoiceSynthesizer:
                 "output_wav": os.path.abspath(output_wav_path),
                 "pitch_shift": pitch_shift,
             }
-            self.proc_net.stdin.write(json.dumps(req2) + "\n")
-            self.proc_net.stdin.flush()
-            line2 = self.proc_net.stdout.readline()
-            if not line2:
-                logger.warning("[VoiceSynthesizer] Aigis Net worker desconectou. Reiniciando daemon...")
-                self._start_net()
-                self.proc_net.stdin.write(json.dumps(req2) + "\n")
-                self.proc_net.stdin.flush()
-                line2 = self.proc_net.stdout.readline()
-                if not line2:
-                    err_net = self.proc_net.stderr.read()
-                    raise RuntimeError(f"Aigis Net worker caiu (rc={self.proc_net.poll()}): {err_net}")
-            r2 = json.loads(line2)
-            if r2.get("status") != "ok":
-                raise RuntimeError(f"Erro na síntese da Aigis: {r2.get('message')}")
+            self._send_net(req2)
 
             return output_wav_path
         finally:
