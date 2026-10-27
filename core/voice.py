@@ -19,6 +19,7 @@ import sys
 import time
 
 import edge_tts
+import numpy as np
 import sounddevice as sd
 import soundfile as sf
 from kokoro_onnx import Kokoro
@@ -38,11 +39,21 @@ class VoiceSynthesizer:
         self._start_hubert()
         self._start_net()
 
-        # 3. Kokoro ONNX para Inglês nativo expressivo
+        # 3. Kokoro ONNX para síntese local ultrarrápida (Inglês e Português)
         kokoro_model = os.path.join(self.project_root, "models", "kokoro", "kokoro-v1.0.onnx")
         kokoro_voices = os.path.join(self.project_root, "models", "kokoro", "voices-v1.0.bin")
         if os.path.exists(kokoro_model) and os.path.exists(kokoro_voices):
-            self.kokoro = Kokoro(kokoro_model, kokoro_voices)
+            try:
+                import onnxruntime as ort
+
+                sess = ort.InferenceSession(kokoro_model, providers=["CPUExecutionProvider"])
+                self.kokoro = Kokoro.from_session(sess, kokoro_voices)
+                logger.info("[VoiceSynthesizer] Motor Kokoro local carregado com sucesso em RAM (CPU).")
+            except Exception as e:
+                logger.warning(
+                    f"[VoiceSynthesizer] Falha ao carregar sessão CPU do Kokoro: {e}, tentando inicialização padrão..."
+                )
+                self.kokoro = Kokoro(kokoro_model, kokoro_voices)
         else:
             self.kokoro = None
 
@@ -137,6 +148,31 @@ class VoiceSynthesizer:
             )
             sf.write(output_pcm_path, samples, sr, format="WAV", subtype="PCM_16")
             pitch_shift = 0.0
+        elif lang == "pt" and self.kokoro is not None:
+            # Síntese local offline em português via Kokoro pf_dora (latência ~500ms, sem internet)
+            try:
+                samples, sr = self.kokoro.create(
+                    clean_text, voice="pf_dora", speed=1.0, lang="pt-br"
+                )
+                sf.write(output_pcm_path, samples, sr, format="WAV", subtype="PCM_16")
+                pitch_shift = 0.0
+            except Exception as e:
+                logger.warning(
+                    f"[VoiceSynthesizer] Erro no Kokoro PT-BR ({e}). Utilizando fallback Edge-TTS..."
+                )
+                temp_raw = output_pcm_path + ".raw.mp3"
+                communicate = edge_tts.Communicate(clean_text, self.voice_pt, rate="-4%", pitch="-1Hz")
+                await communicate.save(temp_raw)
+                try:
+                    data, fs = sf.read(temp_raw)
+                    sf.write(output_pcm_path, data, fs, format="WAV", subtype="PCM_16")
+                finally:
+                    if os.path.exists(temp_raw):
+                        try:
+                            os.remove(temp_raw)
+                        except OSError:
+                            pass
+                pitch_shift = 0.0
         else:
             # Francisca idêntica à de test_aigis_intro.wav (ritmo e tom limpos e contínuos)
             temp_raw = output_pcm_path + ".raw.mp3"
@@ -208,6 +244,34 @@ class VoiceSynthesizer:
                     os.remove(temp_feats)
                 except OSError:
                     pass
+
+    async def synthesize_array(self, text: str) -> tuple[np.ndarray, int]:
+        """Sintetiza texto em memória e retorna (pcm_data, sample_rate) como float32 sem travar o event loop."""
+        timestamp = int(time.time() * 1000)
+        temp_base = os.path.join(self.output_dir, f"temp_base_{timestamp}.wav")
+        temp_out = os.path.join(self.output_dir, f"temp_out_{timestamp}.wav")
+
+        try:
+            lang, pitch_shift = await self._generate_base_tts(text, temp_base)
+            await asyncio.to_thread(self.convert_voice, temp_base, temp_out, pitch_shift)
+            data, fs = sf.read(temp_out, dtype="float32")
+            return data, fs
+        finally:
+            for p in (temp_base, temp_out):
+                if os.path.exists(p):
+                    try:
+                        os.remove(p)
+                    except OSError:
+                        pass
+
+    @staticmethod
+    async def play_array(data: np.ndarray, fs: int):
+        """Reproduz array de áudio via sounddevice em thread sem bloquear o loop assíncrono."""
+        def _play_blocking():
+            sd.play(data, fs)
+            sd.wait()
+
+        await asyncio.to_thread(_play_blocking)
 
     async def speak(
         self,

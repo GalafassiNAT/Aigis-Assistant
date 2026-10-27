@@ -13,6 +13,9 @@ if sys.platform == "win32":
     except Exception:
         pass
 
+import numpy as np
+from loguru import logger
+
 from core.client import chat
 from core.stt import SpeechRecognizer
 from core.timeline import SharedSession
@@ -107,10 +110,49 @@ async def main():
 
             tools_executed = []
             buffer_frase = []
-            first_audio_played = False
             t_first_token = None
 
             print("\n🗣️ [Aigis Falando]: ", end="", flush=True)
+
+            sentence_queue: asyncio.Queue[str | None] = asyncio.Queue()
+            audio_queue: asyncio.Queue[tuple[np.ndarray, int] | None] = asyncio.Queue()
+
+            async def synth_worker(
+                s_queue: asyncio.Queue[str | None],
+                a_queue: asyncio.Queue[tuple[np.ndarray, int] | None],
+            ):
+                while True:
+                    frase = await s_queue.get()
+                    if frase is None:
+                        await a_queue.put(None)
+                        s_queue.task_done()
+                        break
+                    try:
+                        pcm, sr = await synth.synthesize_array(frase)
+                        await a_queue.put((pcm, sr))
+                    except Exception as e:
+                        logger.error(f"[VoiceAssistant] Erro ao sintetizar '{frase}': {e}")
+                    finally:
+                        s_queue.task_done()
+
+            async def player_worker(
+                a_queue: asyncio.Queue[tuple[np.ndarray, int] | None],
+            ):
+                while True:
+                    item = await a_queue.get()
+                    if item is None:
+                        a_queue.task_done()
+                        break
+                    pcm, sr = item
+                    try:
+                        await synth.play_array(pcm, sr)
+                    except Exception as e:
+                        logger.error(f"[VoiceAssistant] Erro ao reproduzir áudio: {e}")
+                    finally:
+                        a_queue.task_done()
+
+            synth_task = asyncio.create_task(synth_worker(sentence_queue, audio_queue))
+            player_task = asyncio.create_task(player_worker(audio_queue))
 
             async for token in chat(
                 sync_messages,
@@ -133,14 +175,17 @@ async def main():
                 ):
                     frase_para_falar = texto_acumulado.strip()
                     buffer_frase = []
-                    await synth.speak(frase_para_falar, play_audio=True)
-                    if not first_audio_played:
-                        first_audio_played = True
+                    await sentence_queue.put(frase_para_falar)
 
             # Fala qualquer resto pendente no buffer
             resto = "".join(buffer_frase).strip()
             if resto:
-                await synth.speak(resto, play_audio=True)
+                await sentence_queue.put(resto)
+
+            # Finaliza e aguarda as filas assíncronas de síntese e reprodução
+            await sentence_queue.put(None)
+            await synth_task
+            await player_task
 
             print()
             dt_llm = (time.perf_counter() - t_llm_start) * 1000

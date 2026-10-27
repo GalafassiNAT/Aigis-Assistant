@@ -18,6 +18,8 @@ venv/
 mambafs*
 
 # Modelos Pesados & Pesos Neurais (Downloads locais)
+models/*.gguf
+models/**/*.gguf
 models/kokoro/*.onnx
 models/kokoro/*.bin
 models/rvc/*.pt
@@ -37,3 +39,5 @@ models/rvc/.cache/
 data/inbox/
 output/audio/
 temp/
+training/tts_distillation/dataset/
+training/tts_distillation/dataset.zip
