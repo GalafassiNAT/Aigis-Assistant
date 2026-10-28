@@ -56,7 +56,18 @@ def setup_colab_environment():
         run_cmd("git clone https://github.com/rhasspy/piper.git")
     run_cmd(f"{ENV_PIP} install --no-deps -e piper/src/python")
     print("[BUILD] Compilando extensão Cython monotonic_align...")
-    run_cmd(f"cd piper/src/python && {ENV_PY} setup.py build_ext --inplace")
+    align_dir = "piper/src/python/piper_train/vits/monotonic_align"
+    run_cmd(f"cd {align_dir} && mkdir -p monotonic_align && {ENV_DIR}/bin/cythonize -i core.pyx")
+    run_cmd(f"cd {align_dir} && cp -f core*.so monotonic_align/ 2>/dev/null || true")
+    run_cmd(f"cd {align_dir} && {ENV_PY} setup.py build_ext --inplace 2>/dev/null || true")
+    run_cmd(f"cd {align_dir} && cp -f core*.so monotonic_align/ 2>/dev/null || true")
+
+    # Validação imediata de import do monotonic_align
+    test_cmd = (
+        f"{ENV_PY} -c 'from piper_train.vits.monotonic_align import maximum_path; "
+        f"print(\"✅ Monotonic align compilado e verificado com sucesso!\")'"
+    )
+    run_cmd(test_cmd)
 
     # 6. Descompacta e normaliza estrutura do dataset
     if os.path.exists("dataset.zip"):
@@ -100,17 +111,21 @@ def train_and_export(
 
     os.makedirs(output_dir, exist_ok=True)
 
-    # 1. Pré-processamento Fonético LJSpeech
-    preprocess_cmd = (
-        f"{ENV_PY} -m piper_train.preprocess "
-        f"--language pt-br "
-        f"--input-dir {dataset_dir} "
-        f"--output-dir {output_dir} "
-        f"--dataset-format ljspeech "
-        f"--single-speaker "
-        f"--sample-rate 22050"
-    )
-    run_cmd(preprocess_cmd)
+    # 1. Pré-processamento Fonético LJSpeech (se ainda não realizado)
+    dataset_jsonl = Path(output_dir) / "dataset.jsonl"
+    if not dataset_jsonl.exists():
+        preprocess_cmd = (
+            f"{ENV_PY} -m piper_train.preprocess "
+            f"--language pt-br "
+            f"--input-dir {dataset_dir} "
+            f"--output-dir {output_dir} "
+            f"--dataset-format ljspeech "
+            f"--single-speaker "
+            f"--sample-rate 22050"
+        )
+        run_cmd(preprocess_cmd)
+    else:
+        print("[INFO] Pré-processamento já existente em training_output/dataset.jsonl. Prosseguindo...")
 
     # 2. Execução do Treinamento
     train_cmd = (
@@ -121,7 +136,8 @@ def train_and_export(
         f"--batch-size {batch_size} "
         f"--max_epochs {max_epochs} "
         f"--checkpoint-epochs 25 "
-        f"--precision 32"
+        f"--precision 32 "
+        f"--quality medium"
     )
     if os.path.exists(BASE_CKPT):
         train_cmd += f" --resume_from_single_speaker_checkpoint {BASE_CKPT}"
