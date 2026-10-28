@@ -3,16 +3,20 @@
 Instruções de Execução no Google Colab (GPU T4 ou L4):
 1. Suba o arquivo 'dataset.zip' (gerado a partir de dataset/ com wavs/ e metadata.csv).
 2. Execute este script:
-   !python 3_colab_train_piper.py
+   !git pull && python 3_colab_train_piper.py
 3. Baixe o modelo final exportado: 'aigis_tts_ptbr.onnx' e 'aigis_tts_ptbr.onnx.json'.
 4. Coloque-os na pasta 'models/piper/' do projeto Aigis.
 """
 
 import os
+import py_compile
+import shutil
 import subprocess
 import sys
 import zipfile
 from pathlib import Path
+
+os.environ["TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD"] = "1"
 
 BASE_CKPT = "pt_BR-faber-medium.ckpt"
 ENV_DIR = "/content/piper_env"
@@ -25,6 +29,43 @@ def run_cmd(cmd: str):
     res = subprocess.run(cmd, shell=True)
     if res.returncode != 0:
         raise RuntimeError(f"Comando falhou com código {res.returncode}: {cmd}")
+
+
+def patch_piper_sources():
+    """Restaura arquivos originais do repositório piper e aplica patches seguros."""
+    run_cmd("git -C piper checkout .")
+
+    # 1. Patch seguro de add_audio em vits/lightning.py (bloco completo de 3 linhas)
+    lightning_path = Path("piper/src/python/piper_train/vits/lightning.py")
+    content = lightning_path.read_text(encoding="utf-8")
+    old_audio_block = (
+        "            self.logger.experiment.add_audio(\n"
+        "                tag, test_audio, sample_rate=self.hparams.sample_rate\n"
+        "            )"
+    )
+    new_audio_block = (
+        "            if hasattr(self.logger.experiment, 'add_audio'):\n"
+        "                self.logger.experiment.add_audio(\n"
+        "                    tag, test_audio, sample_rate=self.hparams.sample_rate\n"
+        "                )"
+    )
+    if old_audio_block in content:
+        content = content.replace(old_audio_block, new_audio_block, 1)
+        lightning_path.write_text(content, encoding="utf-8")
+
+    # 2. Patch de ModelCheckpoint em __main__.py para salvar last.ckpt e não lotar disco
+    main_path = Path("piper/src/python/piper_train/__main__.py")
+    main_content = main_path.read_text(encoding="utf-8")
+    old_ckpt = "ModelCheckpoint(every_n_epochs=args.checkpoint_epochs)"
+    new_ckpt = "ModelCheckpoint(every_n_epochs=args.checkpoint_epochs, save_last=True, save_top_k=1)"
+    if old_ckpt in main_content:
+        main_content = main_content.replace(old_ckpt, new_ckpt, 1)
+        main_path.write_text(main_content, encoding="utf-8")
+
+    # Valida sintaxe dos arquivos modificados antes de prosseguir
+    py_compile.compile(str(lightning_path), doraise=True)
+    py_compile.compile(str(main_path), doraise=True)
+    print("[PATCH] Código-fonte do piper_train validado com sucesso (sem erros de sintaxe).")
 
 
 def setup_colab_environment():
@@ -43,17 +84,22 @@ def setup_colab_environment():
     run_cmd(f"{ENV_PIP} install pip==24.0")
     run_cmd(f"{ENV_PIP} install torch torchaudio --index-url https://download.pytorch.org/whl/cu121")
 
-    # 4. Instala piper-phonemize direto da wheel oficial para Python 3.10
+    # 4. Instala piper-phonemize e dependências cravadas para evitar conflitos de versão
     wheel_url = (
         "https://github.com/rhasspy/piper-phonemize/releases/download/v1.1.0/"
         "piper_phonemize-1.1.0-cp310-cp310-manylinux_2_28_x86_64.whl"
     )
     run_cmd(f"{ENV_PIP} install '{wheel_url}'")
-    run_cmd(f"{ENV_PIP} install piper-tts onnx onnxruntime onnxsim pytorch-lightning==1.9.5 cython librosa")
+    run_cmd(
+        f'{ENV_PIP} install "numpy<2.0" piper-tts onnx onnxruntime '
+        f"pytorch-lightning==1.9.5 torchmetrics==0.11.4 tensorboard cython librosa==0.9.2"
+    )
 
-    # 5. Clona e instala piper/src/python no ambiente e compila monotonic_align
+    # 5. Clona e restaura piper/src/python, aplica patches e compila monotonic_align
     if not os.path.exists("piper"):
         run_cmd("git clone https://github.com/rhasspy/piper.git")
+    patch_piper_sources()
+
     run_cmd(f"{ENV_PIP} install --no-deps -e piper/src/python")
     print("[BUILD] Compilando extensão Cython monotonic_align...")
     align_dir = "piper/src/python/piper_train/vits/monotonic_align"
@@ -70,15 +116,13 @@ def setup_colab_environment():
     run_cmd(test_cmd)
 
     # 6. Descompacta e normaliza estrutura do dataset
-    if os.path.exists("dataset.zip"):
+    if os.path.exists("dataset.zip") and not os.path.exists("dataset/metadata.csv"):
         print("[DATASET] Descompactando dataset.zip...")
         with zipfile.ZipFile("dataset.zip", "r") as z:
             z.extractall(".")
 
-        # Corrige aninhamento se foi compactado como dataset/dataset
         nested_dir = Path("dataset/dataset")
         if nested_dir.exists() and (nested_dir / "metadata.csv").exists():
-            import shutil
             for item in nested_dir.iterdir():
                 dest = Path("dataset") / item.name
                 if not dest.exists():
@@ -89,7 +133,7 @@ def setup_colab_environment():
     wav_count = len(list(Path("dataset/wavs").glob("*.wav")))
     print(f"[DATASET] Pronto com {wav_count} arquivos de áudio em dataset/wavs/ e metadata.csv.")
 
-    # 7. Baixa checkpoint base Faber Medium (1.2M steps)
+    # 7. Baixa checkpoint base Faber Medium (1.2M steps, single-speaker PT-BR)
     if not os.path.exists(BASE_CKPT):
         print("[CHECKPOINT] Baixando checkpoint base Faber Medium pré-treinado...")
         ckpt_url = (
@@ -99,11 +143,22 @@ def setup_colab_environment():
         run_cmd(f"wget -q -O {BASE_CKPT} '{ckpt_url}'")
 
 
+def get_checkpoint_epoch(ckpt_path: str) -> int:
+    """Lê a época atual gravada dentro do checkpoint do PyTorch Lightning."""
+    cmd = (
+        f"{ENV_PY} -c \"import torch; "
+        f"ckpt = torch.load('{ckpt_path}', map_location='cpu', weights_only=False); "
+        f"print(int(ckpt.get('epoch', 0)))\""
+    )
+    out = subprocess.check_output(cmd, shell=True, text=True).strip()
+    return int(out.splitlines()[-1])
+
+
 def train_and_export(
     dataset_dir: str = "dataset",
     output_dir: str = "training_output",
-    max_epochs: int = 300,
-    batch_size: int = 32,
+    finetune_epochs: int = 200,
+    batch_size: int = 16,
 ):
     print("============================================================")
     print("🏋️ INICIANDO PRÉ-PROCESSAMENTO E TREINO PIPER (VITS)")
@@ -127,39 +182,51 @@ def train_and_export(
     else:
         print("[INFO] Pré-processamento já existente em training_output/dataset.jsonl. Prosseguindo...")
 
-    # 2. Execução do Treinamento
+    # 2. Pre-flight check de exportação ONNX antes de iniciar o treino longo
+    print("[PRE-FLIGHT] Validando pipeline de exportação ONNX no checkpoint base...")
+    run_cmd(f"{ENV_PY} -m piper_train.export_onnx {BASE_CKPT} /tmp/preflight_test.onnx")
+    if os.path.exists("/tmp/preflight_test.onnx"):
+        os.remove("/tmp/preflight_test.onnx")
+    print("✅ Pre-flight ONNX validado com sucesso!")
+
+    # 3. Calcula max_epochs somando as épocas de fine-tuning à época do checkpoint base (6159)
+    base_epoch = get_checkpoint_epoch(BASE_CKPT)
+    target_max_epochs = base_epoch + finetune_epochs
+    print(
+        f"[INFO] Checkpoint base está na época {base_epoch}. "
+        f"Treinando por +{finetune_epochs} épocas (até max_epochs={target_max_epochs})..."
+    )
+
+    # 4. Execução do Treinamento Single-Speaker (--resume_from_checkpoint)
     train_cmd = (
         f"{ENV_PY} -m piper_train "
         f"--dataset-dir {output_dir} "
         f"--accelerator gpu "
         f"--devices 1 "
         f"--batch-size {batch_size} "
-        f"--max_epochs {max_epochs} "
-        f"--checkpoint-epochs 25 "
+        f"--max_epochs {target_max_epochs} "
+        f"--checkpoint-epochs 10 "
         f"--precision 32 "
-        f"--quality medium"
+        f"--quality medium "
+        f"--resume_from_checkpoint {BASE_CKPT}"
     )
-    if os.path.exists(BASE_CKPT):
-        train_cmd += f" --resume_from_single_speaker_checkpoint {BASE_CKPT}"
-
     run_cmd(train_cmd)
 
-    # 3. Identifica o último checkpoint salvo
+    # 5. Identifica o último checkpoint salvo
     lightning_logs = Path(output_dir) / "lightning_logs"
     ckpts = list(lightning_logs.glob("**/*.ckpt"))
     if not ckpts:
-        raise RuntimeError("Nenhum checkpoint encontrado para exportação.")
+        raise RuntimeError("Nenhum checkpoint encontrado em training_output/lightning_logs.")
     best_ckpt = max(ckpts, key=os.path.getmtime)
-    print(f"\n[EXPORT] Melhor checkpoint encontrado: {best_ckpt}")
+    print(f"\n[EXPORT] Checkpoint final selecionado: {best_ckpt}")
 
-    # 4. Exportação para ONNX
+    # 6. Exportação para ONNX
     export_onnx_cmd = f"{ENV_PY} -m piper_train.export_onnx {best_ckpt} aigis_tts_ptbr.onnx"
     run_cmd(export_onnx_cmd)
 
-    # 5. Copia o arquivo config.json para aigis_tts_ptbr.onnx.json
+    # 7. Copia o arquivo config.json para aigis_tts_ptbr.onnx.json
     config_src = Path(output_dir) / "config.json"
     if config_src.exists():
-        import shutil
         shutil.copy(str(config_src), "aigis_tts_ptbr.onnx.json")
 
     print("\n============================================================")
