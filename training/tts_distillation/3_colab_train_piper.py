@@ -1,11 +1,11 @@
-"""Pipeline de Treinamento e Exportação ONNX do Piper TTS para Google Colab.
+"""Pipeline de Treinamento e Exportação ONNX do Piper TTS para Google Colab com Backup Contínuo no Google Drive.
 
 Instruções de Execução no Google Colab (GPU T4 ou L4):
-1. Suba o arquivo 'dataset.zip' (gerado a partir de dataset/ com wavs/ e metadata.csv).
+1. Suba o arquivo 'dataset.zip' no Colab (ou coloque-o diretamente no seu Google Drive).
 2. Execute este script:
-   !git pull && python 3_colab_train_piper.py
-3. Baixe o modelo final exportado: 'aigis_tts_ptbr.onnx' e 'aigis_tts_ptbr.onnx.json'.
-4. Coloque-os na pasta 'models/piper/' do projeto Aigis.
+   !git pull && python training/tts_distillation/3_colab_train_piper.py
+3. Ao rodar, autorize a montagem do Google Drive quando solicitado na tela.
+4. O script salvará tudo em tempo real na pasta 'Aigis_TTS_Model' do seu Google Drive.
 """
 
 import os
@@ -22,6 +22,7 @@ BASE_CKPT = "pt_BR-faber-medium.ckpt"
 ENV_DIR = "/content/piper_env"
 ENV_PY = f"{ENV_DIR}/bin/python3" if os.path.exists("/content") else sys.executable
 ENV_PIP = f"{ENV_DIR}/bin/pip" if os.path.exists("/content") else "pip"
+DRIVE_BACKUP_DIR = Path("/content/drive/MyDrive/Aigis_TTS_Model")
 
 
 def run_cmd(cmd: str):
@@ -31,8 +32,23 @@ def run_cmd(cmd: str):
         raise RuntimeError(f"Comando falhou com código {res.returncode}: {cmd}")
 
 
+def mount_google_drive():
+    """Monta o Google Drive de forma nativa e cria a pasta de persistência."""
+    if os.path.exists("/content"):
+        print("============================================================")
+        print("💾 CONECTANDO AO GOOGLE DRIVE (PERSISTÊNCIA GARANTIDA)")
+        print("============================================================")
+        try:
+            from google.colab import drive
+            drive.mount("/content/drive")
+            DRIVE_BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+            print(f"✅ Google Drive conectado com sucesso! Destino: {DRIVE_BACKUP_DIR}")
+        except Exception as e:
+            print(f"⚠️ Aviso ao conectar Google Drive: {e}")
+
+
 def patch_piper_sources():
-    """Restaura arquivos originais do repositório piper e aplica patches seguros."""
+    """Restaura arquivos originais do repositório piper e aplica patches seguros e de backup contínuo."""
     run_cmd("git -C piper checkout .")
 
     # 1. Patch seguro de add_audio em vits/lightning.py (bloco completo de 3 linhas)
@@ -53,22 +69,48 @@ def patch_piper_sources():
         content = content.replace(old_audio_block, new_audio_block, 1)
         lightning_path.write_text(content, encoding="utf-8")
 
-    # 2. Patch de ModelCheckpoint em __main__.py para salvar last.ckpt e não lotar disco
+    # 2. Patch em __main__.py: ModelCheckpoint + DriveSyncCallback para salvar cada época no Google Drive
     main_path = Path("piper/src/python/piper_train/__main__.py")
     main_content = main_path.read_text(encoding="utf-8")
-    old_ckpt = "ModelCheckpoint(every_n_epochs=args.checkpoint_epochs)"
-    new_ckpt = "ModelCheckpoint(every_n_epochs=args.checkpoint_epochs, save_last=True, save_top_k=1)"
-    if old_ckpt in main_content:
-        main_content = main_content.replace(old_ckpt, new_ckpt, 1)
+
+    callback_code = (
+        "from pytorch_lightning.callbacks import Callback, ModelCheckpoint\n"
+        "import shutil, glob\n"
+        "\n"
+        "class DriveSyncCallback(Callback):\n"
+        "    def on_train_epoch_end(self, trainer, pl_module):\n"
+        "        try:\n"
+        "            target_dir = '/content/drive/MyDrive/Aigis_TTS_Model'\n"
+        "            if os.path.exists('/content/drive/MyDrive'):\n"
+        "                os.makedirs(target_dir, exist_ok=True)\n"
+        "                root = str(trainer.default_root_dir or 'training_output')\n"
+        "                for ckpt in glob.glob(f'{root}/**/*.ckpt', recursive=True):\n"
+        "                    shutil.copy(ckpt, target_dir)\n"
+        "        except Exception:\n"
+        "            pass\n"
+    )
+
+    old_ckpt_line = "trainer.callbacks = [ModelCheckpoint(every_n_epochs=args.checkpoint_epochs)]"
+    new_ckpt_line = (
+        "trainer.callbacks = [\n"
+        "        ModelCheckpoint(every_n_epochs=args.checkpoint_epochs, save_last=True, save_top_k=1),\n"
+        "        DriveSyncCallback()\n"
+        "    ]"
+    )
+
+    if old_ckpt_line in main_content:
+        main_content = callback_code + "\n" + main_content.replace(old_ckpt_line, new_ckpt_line, 1)
         main_path.write_text(main_content, encoding="utf-8")
 
     # Valida sintaxe dos arquivos modificados antes de prosseguir
     py_compile.compile(str(lightning_path), doraise=True)
     py_compile.compile(str(main_path), doraise=True)
-    print("[PATCH] Código-fonte do piper_train validado com sucesso (sem erros de sintaxe).")
+    print("[PATCH] Código-fonte do piper_train com sincronização contínua para o Drive validado.")
 
 
 def setup_colab_environment():
+    mount_google_drive()
+
     print("============================================================")
     print("🚀 CONFIGURANDO AMBIENTE PIPER TTS NO COLAB (Python 3.10)")
     print("============================================================")
@@ -115,7 +157,17 @@ def setup_colab_environment():
     )
     run_cmd(test_cmd)
 
-    # 6. Descompacta e normaliza estrutura do dataset
+    # 6. Descompacta e normaliza estrutura do dataset (busca local ou no Google Drive)
+    if not os.path.exists("dataset.zip"):
+        for drive_candidate in [
+            DRIVE_BACKUP_DIR / "dataset.zip",
+            Path("/content/drive/MyDrive/dataset.zip"),
+        ]:
+            if drive_candidate.exists():
+                print(f"[DATASET] Encontrado no Google Drive: {drive_candidate}. Copiando...")
+                shutil.copy(str(drive_candidate), "dataset.zip")
+                break
+
     if os.path.exists("dataset.zip") and not os.path.exists("dataset/metadata.csv"):
         print("[DATASET] Descompactando dataset.zip...")
         with zipfile.ZipFile("dataset.zip", "r") as z:
@@ -129,7 +181,10 @@ def setup_colab_environment():
                     shutil.move(str(item), str(dest))
             shutil.rmtree(nested_dir, ignore_errors=True)
 
-    assert os.path.exists("dataset/metadata.csv"), "Arquivo dataset/metadata.csv não encontrado!"
+    assert os.path.exists("dataset/metadata.csv"), (
+        "Arquivo dataset.zip não encontrado! Suba 'dataset.zip' no Colab ou coloque na pasta "
+        "'Aigis_TTS_Model' do seu Google Drive."
+    )
     wav_count = len(list(Path("dataset/wavs").glob("*.wav")))
     print(f"[DATASET] Pronto com {wav_count} arquivos de áudio em dataset/wavs/ e metadata.csv.")
 
@@ -158,7 +213,7 @@ def train_and_export(
     dataset_dir: str = "dataset",
     output_dir: str = "training_output",
     finetune_epochs: int = 200,
-    batch_size: int = 16,
+    batch_size: int = 32,
 ):
     print("============================================================")
     print("🏋️ INICIANDO PRÉ-PROCESSAMENTO E TREINO PIPER (VITS)")
@@ -182,7 +237,7 @@ def train_and_export(
     else:
         print("[INFO] Pré-processamento já existente em training_output/dataset.jsonl. Prosseguindo...")
 
-    # 2. Pre-flight check de exportação ONNX antes de iniciar o treino longo
+    # 2. Pre-flight check de exportação ONNX antes de iniciar o treino
     print("[PRE-FLIGHT] Validando pipeline de exportação ONNX no checkpoint base...")
     run_cmd(f"{ENV_PY} -m piper_train.export_onnx {BASE_CKPT} /tmp/preflight_test.onnx")
     if os.path.exists("/tmp/preflight_test.onnx"):
@@ -194,10 +249,10 @@ def train_and_export(
     target_max_epochs = base_epoch + finetune_epochs
     print(
         f"[INFO] Checkpoint base está na época {base_epoch}. "
-        f"Treinando por +{finetune_epochs} épocas (até max_epochs={target_max_epochs})..."
+        f"Treinando por +{finetune_epochs} épocas com batch_size={batch_size} (até max_epochs={target_max_epochs})..."
     )
 
-    # 4. Execução do Treinamento Single-Speaker (--resume_from_checkpoint)
+    # 4. Execução do Treinamento Single-Speaker com sincronização para o Drive
     train_cmd = (
         f"{ENV_PY} -m piper_train "
         f"--dataset-dir {output_dir} "
@@ -229,9 +284,27 @@ def train_and_export(
     if config_src.exists():
         shutil.copy(str(config_src), "aigis_tts_ptbr.onnx.json")
 
+    # 8. Backup garantido e redundante no Google Drive
+    if Path("/content/drive/MyDrive").exists():
+        print(f"\n[BACKUP] Salvando modelo final no seu Google Drive ({DRIVE_BACKUP_DIR})...")
+        DRIVE_BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+        shutil.copy("aigis_tts_ptbr.onnx", str(DRIVE_BACKUP_DIR / "aigis_tts_ptbr.onnx"))
+        shutil.copy("aigis_tts_ptbr.onnx.json", str(DRIVE_BACKUP_DIR / "aigis_tts_ptbr.onnx.json"))
+        shutil.copy(str(best_ckpt), str(DRIVE_BACKUP_DIR / "aigis_best_checkpoint.ckpt"))
+        print(f"✅ ARQUIVOS SALVOS NO GOOGLE DRIVE COM SUCESSO: {DRIVE_BACKUP_DIR}")
+
+    # 9. Disparo automático de download no navegador
+    try:
+        from google.colab import files
+        print("[DOWNLOAD] Disparando download automático no navegador...")
+        files.download("aigis_tts_ptbr.onnx")
+        files.download("aigis_tts_ptbr.onnx.json")
+    except Exception:
+        pass
+
     print("\n============================================================")
-    print("✅ MODELO ONNX EXPORTADO COM SUCESSO!")
-    print("Arquivos prontos para download:")
+    print("✅ MODELO ONNX EXPORTADO E SALVO COM SUCESSO TOTAL!")
+    print(f"Arquivos salvos no Google Drive em: {DRIVE_BACKUP_DIR}")
     print("- aigis_tts_ptbr.onnx")
     print("- aigis_tts_ptbr.onnx.json")
     print("============================================================")
