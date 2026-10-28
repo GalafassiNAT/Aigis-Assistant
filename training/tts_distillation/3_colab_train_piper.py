@@ -49,18 +49,34 @@ def setup_colab_environment():
         "piper_phonemize-1.1.0-cp310-cp310-manylinux_2_28_x86_64.whl"
     )
     run_cmd(f"{ENV_PIP} install '{wheel_url}'")
-    run_cmd(f"{ENV_PIP} install piper-tts onnx onnxruntime pytorch-lightning==1.9.5 cython librosa")
+    run_cmd(f"{ENV_PIP} install piper-tts onnx onnxruntime onnxsim pytorch-lightning==1.9.5 cython librosa")
 
-    # 5. Clona e instala piper/src/python no ambiente sem travar em dependências legadas
+    # 5. Clona e instala piper/src/python no ambiente e compila monotonic_align
     if not os.path.exists("piper"):
         run_cmd("git clone https://github.com/rhasspy/piper.git")
     run_cmd(f"{ENV_PIP} install --no-deps -e piper/src/python")
+    print("[BUILD] Compilando extensão Cython monotonic_align...")
+    run_cmd(f"cd piper/src/python && {ENV_PY} setup.py build_ext --inplace")
 
-    # 6. Descompacta dataset se houver dataset.zip
-    if os.path.exists("dataset.zip") and not os.path.exists("dataset/metadata.csv"):
+    # 6. Descompacta e normaliza estrutura do dataset
+    if os.path.exists("dataset.zip"):
         print("[DATASET] Descompactando dataset.zip...")
         with zipfile.ZipFile("dataset.zip", "r") as z:
-            z.extractall("dataset")
+            z.extractall(".")
+
+        # Corrige aninhamento se foi compactado como dataset/dataset
+        nested_dir = Path("dataset/dataset")
+        if nested_dir.exists() and (nested_dir / "metadata.csv").exists():
+            import shutil
+            for item in nested_dir.iterdir():
+                dest = Path("dataset") / item.name
+                if not dest.exists():
+                    shutil.move(str(item), str(dest))
+            shutil.rmtree(nested_dir, ignore_errors=True)
+
+    assert os.path.exists("dataset/metadata.csv"), "Arquivo dataset/metadata.csv não encontrado!"
+    wav_count = len(list(Path("dataset/wavs").glob("*.wav")))
+    print(f"[DATASET] Pronto com {wav_count} arquivos de áudio em dataset/wavs/ e metadata.csv.")
 
     # 7. Baixa checkpoint base Faber Medium (1.2M steps)
     if not os.path.exists(BASE_CKPT):
@@ -123,6 +139,12 @@ def train_and_export(
     # 4. Exportação para ONNX
     export_onnx_cmd = f"{ENV_PY} -m piper_train.export_onnx {best_ckpt} aigis_tts_ptbr.onnx"
     run_cmd(export_onnx_cmd)
+
+    # 5. Copia o arquivo config.json para aigis_tts_ptbr.onnx.json
+    config_src = Path(output_dir) / "config.json"
+    if config_src.exists():
+        import shutil
+        shutil.copy(str(config_src), "aigis_tts_ptbr.onnx.json")
 
     print("\n============================================================")
     print("✅ MODELO ONNX EXPORTADO COM SUCESSO!")
