@@ -8,7 +8,6 @@ e formata no padrão padrão LJSpeech para treinamento de Piper / VITS:
 """
 
 import asyncio
-import os
 import sys
 import time
 import zipfile
@@ -18,9 +17,10 @@ from pathlib import Path
 project_root = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-import numpy as np
-import soundfile as sf
-from core.voice import VoiceSynthesizer
+import numpy as np  # noqa: E402
+import soundfile as sf  # noqa: E402
+
+from core.voice import VoiceSynthesizer  # noqa: E402
 
 
 def trim_silence(audio: np.ndarray, top_db: float = 30.0) -> np.ndarray:
@@ -62,7 +62,7 @@ async def render_dataset(corpus_path: str, output_dir: str):
         print(f"[ERRO] Corpus não encontrado em: {corpus_path}")
         return
 
-    with open(c_path, "r", encoding="utf-8") as f:
+    with open(c_path, encoding="utf-8") as f:
         lines = [line.strip() for line in f if line.strip()]
 
     out = Path(output_dir)
@@ -70,11 +70,11 @@ async def render_dataset(corpus_path: str, output_dir: str):
     wavs_dir.mkdir(parents=True, exist_ok=True)
     metadata_csv = out / "metadata.csv"
 
-    print(f"============================================================")
-    print(f"🎙️ RENDERIZANDO DATASET AIGIS (LJSpeech Format)")
+    print("============================================================")
+    print("🎙️ RENDERIZANDO DATASET AIGIS (LJSpeech Format)")
     print(f"Total de sentenças a sintetizar: {len(lines)}")
     print(f"Pasta de saída: {out.resolve()}")
-    print(f"============================================================")
+    print("============================================================")
 
     synth = VoiceSynthesizer()
     entries = []
@@ -89,9 +89,23 @@ async def render_dataset(corpus_path: str, output_dir: str):
                 entries.append(f"{sample_id}|{text}")
                 continue
 
-            # Sintetiza em array de memória sem bloquear
+            # Sintetiza em array de memória com retry resiliente
+            pcm = None
+            sr = None
             t_s = time.time()
-            pcm, sr = await synth.synthesize_array(text)
+            for retry in range(3):
+                try:
+                    pcm, sr = await synth.synthesize_array(text)
+                    break
+                except Exception as e:
+                    print(
+                        f"\n⚠️ Falha temporária na sentença {idx} (tentativa {retry + 1}/3): {e}. Aguardando 2s..."
+                    )
+                    await asyncio.sleep(2.0)
+
+            if pcm is None:
+                print(f"❌ Não foi possível sintetizar a sentença {idx} após 3 tentativas. Pulando...")
+                continue
 
             # Reamostragem para 22050Hz + corte de silêncio + normalização
             pcm, sr = resample_audio(pcm, sr, target_sr=22050)

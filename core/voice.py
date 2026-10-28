@@ -152,8 +152,20 @@ class VoiceSynthesizer:
         else:
             # Francisca idêntica à de test_aigis_intro.wav (calibração pura da persona Aigis)
             temp_raw = output_pcm_path + ".raw.mp3"
-            communicate = edge_tts.Communicate(clean_text, self.voice_pt, rate="-4%", pitch="-1Hz")
-            await communicate.save(temp_raw)
+            for attempt in range(3):
+                try:
+                    communicate = edge_tts.Communicate(clean_text, self.voice_pt, rate="-4%", pitch="-1Hz")
+                    await communicate.save(temp_raw)
+                    if os.path.exists(temp_raw) and os.path.getsize(temp_raw) > 100:
+                        break
+                except Exception as e:
+                    if attempt == 2:
+                        raise
+                    logger.warning(
+                        f"[VoiceSynthesizer] Edge-TTS reconectando (tentativa {attempt + 1}/3): {e}"
+                    )
+                    await asyncio.sleep(1.5)
+
             try:
                 data, fs = sf.read(temp_raw)
                 sf.write(output_pcm_path, data, fs, format="WAV", subtype="PCM_16")
