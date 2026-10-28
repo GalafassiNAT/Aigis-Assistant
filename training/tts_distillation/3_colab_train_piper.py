@@ -39,8 +39,8 @@ def setup_colab_environment():
     if os.path.exists("/content") and not os.path.exists(ENV_DIR):
         run_cmd(f"python3.10 -m venv {ENV_DIR}")
 
-    # 3. Atualiza pip e instala PyTorch com suporte a CUDA
-    run_cmd(f"{ENV_PIP} install --upgrade pip")
+    # 3. Usa pip compatível (<=24.0) e instala PyTorch com suporte a CUDA
+    run_cmd(f"{ENV_PIP} install pip==24.0")
     run_cmd(f"{ENV_PIP} install torch torchaudio --index-url https://download.pytorch.org/whl/cu121")
 
     # 4. Instala piper-phonemize direto da wheel oficial para Python 3.10
@@ -49,12 +49,12 @@ def setup_colab_environment():
         "piper_phonemize-1.1.0-cp310-cp310-manylinux_2_28_x86_64.whl"
     )
     run_cmd(f"{ENV_PIP} install '{wheel_url}'")
-    run_cmd(f"{ENV_PIP} install piper-tts onnx onnxruntime pytorch-lightning==1.9.5")
+    run_cmd(f"{ENV_PIP} install piper-tts onnx onnxruntime pytorch-lightning==1.9.5 cython librosa")
 
-    # 5. Clona e instala piper/src/python no ambiente
+    # 5. Clona e instala piper/src/python no ambiente sem travar em dependências legadas
     if not os.path.exists("piper"):
         run_cmd("git clone https://github.com/rhasspy/piper.git")
-    run_cmd(f"{ENV_PIP} install -e piper/src/python")
+    run_cmd(f"{ENV_PIP} install --no-deps -e piper/src/python")
 
     # 6. Descompacta dataset se houver dataset.zip
     if os.path.exists("dataset.zip") and not os.path.exists("dataset/metadata.csv"):
