@@ -10,10 +10,14 @@ Instruções de Execução no Google Colab (GPU T4 ou L4):
 
 import os
 import subprocess
+import sys
 import zipfile
 from pathlib import Path
 
 BASE_CKPT = "pt_BR-faber-medium.ckpt"
+ENV_DIR = "/content/piper_env"
+ENV_PY = f"{ENV_DIR}/bin/python3" if os.path.exists("/content") else sys.executable
+ENV_PIP = f"{ENV_DIR}/bin/pip" if os.path.exists("/content") else "pip"
 
 
 def run_cmd(cmd: str):
@@ -25,25 +29,40 @@ def run_cmd(cmd: str):
 
 def setup_colab_environment():
     print("============================================================")
-    print("🚀 CONFIGURANDO AMBIENTE PIPER TTS NO COLAB")
+    print("🚀 CONFIGURANDO AMBIENTE PIPER TTS NO COLAB (Python 3.10)")
     print("============================================================")
 
-    # 1. Instala dependências de áudio e fonetizador espeak-ng
-    run_cmd("apt-get update && apt-get install -y espeak-ng libespeak-ng-dev")
-    run_cmd("pip install piper-tts piper-phonemize onnx onnxruntime torch pytorch-lightning==1.9.5")
+    # 1. Instala Python 3.10 e espeak-ng no Ubuntu 24.04 do Colab
+    run_cmd("apt-get update && apt-get install -y espeak-ng libespeak-ng-dev python3.10 python3.10-venv python3.10-dev")
 
-    # 2. Clona o repositório de treino do Piper se necessário
+    # 2. Cria ambiente virtual com Python 3.10 compatível com piper-phonemize
+    if os.path.exists("/content") and not os.path.exists(ENV_DIR):
+        run_cmd(f"python3.10 -m venv {ENV_DIR}")
+
+    # 3. Atualiza pip e instala PyTorch com suporte a CUDA
+    run_cmd(f"{ENV_PIP} install --upgrade pip")
+    run_cmd(f"{ENV_PIP} install torch torchaudio --index-url https://download.pytorch.org/whl/cu121")
+
+    # 4. Instala piper-phonemize direto da wheel oficial para Python 3.10
+    wheel_url = (
+        "https://github.com/rhasspy/piper-phonemize/releases/download/v1.1.0/"
+        "piper_phonemize-1.1.0-cp310-cp310-manylinux_2_28_x86_64.whl"
+    )
+    run_cmd(f"{ENV_PIP} install '{wheel_url}'")
+    run_cmd(f"{ENV_PIP} install piper-tts onnx onnxruntime pytorch-lightning==1.9.5")
+
+    # 5. Clona e instala piper/src/python no ambiente
     if not os.path.exists("piper"):
         run_cmd("git clone https://github.com/rhasspy/piper.git")
-        run_cmd("pip install -e piper/src/python")
+    run_cmd(f"{ENV_PIP} install -e piper/src/python")
 
-    # 3. Descompacta dataset se houver dataset.zip
+    # 6. Descompacta dataset se houver dataset.zip
     if os.path.exists("dataset.zip") and not os.path.exists("dataset/metadata.csv"):
         print("[DATASET] Descompactando dataset.zip...")
         with zipfile.ZipFile("dataset.zip", "r") as z:
             z.extractall("dataset")
 
-    # 4. Baixa checkpoint base pré-treinado em Português (Faber Medium - 1.2M steps)
+    # 7. Baixa checkpoint base Faber Medium (1.2M steps)
     if not os.path.exists(BASE_CKPT):
         print("[CHECKPOINT] Baixando checkpoint base Faber Medium pré-treinado...")
         ckpt_url = (
@@ -67,7 +86,7 @@ def train_and_export(
 
     # 1. Pré-processamento Fonético LJSpeech
     preprocess_cmd = (
-        f"python3 -m piper_train.preprocess "
+        f"{ENV_PY} -m piper_train.preprocess "
         f"--language pt-br "
         f"--input-dir {dataset_dir} "
         f"--output-dir {output_dir} "
@@ -79,7 +98,7 @@ def train_and_export(
 
     # 2. Execução do Treinamento
     train_cmd = (
-        f"python3 -m piper_train "
+        f"{ENV_PY} -m piper_train "
         f"--dataset-dir {output_dir} "
         f"--accelerator gpu "
         f"--devices 1 "
@@ -102,7 +121,7 @@ def train_and_export(
     print(f"\n[EXPORT] Melhor checkpoint encontrado: {best_ckpt}")
 
     # 4. Exportação para ONNX
-    export_onnx_cmd = f"python3 -m piper_train.export_onnx {best_ckpt} aigis_tts_ptbr.onnx"
+    export_onnx_cmd = f"{ENV_PY} -m piper_train.export_onnx {best_ckpt} aigis_tts_ptbr.onnx"
     run_cmd(export_onnx_cmd)
 
     print("\n============================================================")
