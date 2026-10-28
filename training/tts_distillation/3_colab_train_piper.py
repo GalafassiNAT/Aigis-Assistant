@@ -10,9 +10,10 @@ Instruções de Execução no Google Colab (GPU T4 ou L4):
 
 import os
 import subprocess
-import sys
 import zipfile
 from pathlib import Path
+
+BASE_CKPT = "pt_BR-faber-medium.ckpt"
 
 
 def run_cmd(cmd: str):
@@ -42,23 +43,20 @@ def setup_colab_environment():
         with zipfile.ZipFile("dataset.zip", "r") as z:
             z.extractall("dataset")
 
-    # 4. Baixa checkpoint base pré-treinado em Português (Faber Medium)
-    base_ckpt = "pt_BR-faber-medium.ckpt"
-    if not os.path.exists(base_ckpt):
-        print("[CHECKPOINT] Baixando checkpoint base pt_BR-faber-medium...")
-        url = "https://huggingface.co/rhasspy/piper-voices/resolve/main/pt/pt_BR/faber/medium/pt_BR-faber-medium.onnx"
-        # Download do checkpoint PyTorch de fine-tuning
-        ckpt_url = "https://github.com/rhasspy/piper/releases/download/v0.0.2/pt_BR-faber-medium.ckpt"
-        try:
-            run_cmd(f"wget -q -O {base_ckpt} {ckpt_url}")
-        except Exception:
-            print("[INFO] Checkpoint inicial de download direto indisponível, inicializando treinamento single-speaker.")
+    # 4. Baixa checkpoint base pré-treinado em Português (Faber Medium - 1.2M steps)
+    if not os.path.exists(BASE_CKPT):
+        print("[CHECKPOINT] Baixando checkpoint base Faber Medium pré-treinado...")
+        ckpt_url = (
+            "https://huggingface.co/datasets/rhasspy/piper-checkpoints/resolve/main/"
+            "pt/pt_BR/faber/medium/epoch%3D6159-step%3D1230728.ckpt"
+        )
+        run_cmd(f"wget -q -O {BASE_CKPT} '{ckpt_url}'")
 
 
 def train_and_export(
     dataset_dir: str = "dataset",
     output_dir: str = "training_output",
-    max_epochs: int = 1500,
+    max_epochs: int = 300,
     batch_size: int = 32,
 ):
     print("============================================================")
@@ -87,11 +85,11 @@ def train_and_export(
         f"--devices 1 "
         f"--batch-size {batch_size} "
         f"--max_epochs {max_epochs} "
-        f"--checkpoint-epochs 100 "
+        f"--checkpoint-epochs 25 "
         f"--precision 32"
     )
-    if os.path.exists("pt_BR-faber-medium.ckpt"):
-        train_cmd += " --resume_from_single_speaker_checkpoint pt_BR-faber-medium.ckpt"
+    if os.path.exists(BASE_CKPT):
+        train_cmd += f" --resume_from_single_speaker_checkpoint {BASE_CKPT}"
 
     run_cmd(train_cmd)
 
