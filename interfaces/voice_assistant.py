@@ -1,7 +1,15 @@
 import asyncio
+import os
+import re
 import sys
+import threading
 import time
 from pathlib import Path
+
+if sys.platform.startswith("linux"):
+    os.environ.setdefault("HSA_OVERRIDE_GFX_VERSION", "11.0.0")
+    os.environ.setdefault("MIOPEN_FIND_MODE", "FAST")
+    os.environ.setdefault("TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL", "1")
 
 # Garante raiz do projeto no sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -21,6 +29,49 @@ from core.stt import SpeechRecognizer
 from core.timeline import SharedSession
 from core.voice import VoiceSynthesizer
 
+_BOUNDARY_RE = re.compile(r"([.!?]+|[,;:]|\n+|\))\s*")
+
+
+def extract_ready_sentence(buffer_text: str, is_first_phrase: bool) -> tuple[str | None, str]:
+    """
+    Percorre todas as fronteiras de pontuação já seguidas de espaço em branco no buffer.
+    Garante que:
+    1. Nenhuma palavra BPE ou número decimal ('3.14') seja cortado ao meio.
+    2. A primeira frase despache imediatamente com qualquer confirmação ('Entendido!', 'Boa noite!')
+       para alcançar Time-To-First-Audio de ~1s.
+    3. As orações seguintes agrupem contextos completos de 2+ palavras.
+    """
+    min_clause_words = 3 if is_first_phrase else 6
+
+    for match in _BOUNDARY_RE.finditer(buffer_text):
+        punct = match.group(1)
+        candidate = buffer_text[: match.start() + len(punct)].strip()
+        remainder = buffer_text[match.end() :]
+        words = candidate.split()
+
+        is_strong = any(p in punct for p in (".", "!", "?", "\n", ")"))
+
+        if is_first_phrase:
+            # Primeira frase: despacha imediatamente com 1+ palavras em pontuação forte ou 3+ em vírgula
+            if is_strong and len(words) >= 1 and len(candidate) >= 3:
+                return candidate, remainder
+            if not is_strong and len(words) >= min_clause_words:
+                clean_cand = candidate.rstrip(",;:- ").strip()
+                if clean_cand and not clean_cand.endswith((".", "!", "?")):
+                    clean_cand += "."
+                return clean_cand, remainder
+        else:
+            # Orações seguintes: despacha em pontuação forte com 2+ palavras ou vírgula média (6+ palavras)
+            if is_strong and len(words) >= 2:
+                return candidate, remainder
+            if not is_strong and len(words) >= min_clause_words:
+                clean_cand = candidate.rstrip(",;:- ").strip()
+                if clean_cand and not clean_cand.endswith((".", "!", "?")):
+                    clean_cand += "."
+                return clean_cand, remainder
+
+    return None, buffer_text
+
 
 async def play_audio_file(filepath: Path):
     """Toca o arquivo gerado via sounddevice."""
@@ -28,9 +79,8 @@ async def play_audio_file(filepath: Path):
         import sounddevice as sd
         import soundfile as sf
 
-        data, fs = sf.read(str(filepath))
-        sd.play(data, fs)
-        sd.wait()
+        data, fs = sf.read(str(filepath), dtype="float32")
+        sd.play(data, fs, blocking=True)
     except Exception as e:
         print(f"[Playback] Erro ao reproduzir áudio: {e}")
 
@@ -49,7 +99,7 @@ async def main():
     print("🤖 SISTEMA DE VOZ INTEGRADO DA AIGIS (PC + DISCORD BRIDGE)")
     print("=" * 60)
 
-    # 1. Carrega Sintetizador e STT
+    # 1. Carrega Sintetizador (100% GPU) e STT (Multi-thread CPU)
     synth = VoiceSynthesizer()
     stt = SpeechRecognizer(model_size="small", device="cpu", compute_type="int8")
     session = SharedSession.get_instance()
@@ -63,7 +113,7 @@ async def main():
     # Fala inicial de prontidão
     print("\n[Inicializando Aigis...]")
     await speak_notification(
-        synth, "Sistemas operacionais! Olá mestre! Estou te ouvindo pelo microfone."
+        synth, "Sistemas operacionais. Olá, mestre. Estou te ouvindo pelo microfone."
     )
 
     print("\n👉 Pressione Ctrl+C para encerrar o loop de voz.")
@@ -73,12 +123,73 @@ async def main():
 
     try:
         while not stop_event.is_set():
-            # Escuta uma elocução completa do usuário no microfone
-            user_speech = await asyncio.to_thread(stt.listen_and_transcribe_once, 1.5, stop_event)
+            # Escuta uma elocução completa do usuário no microfone (timeout ágil de 1.0s)
+            user_speech = await asyncio.to_thread(stt.listen_and_transcribe_once, 1.0, stop_event)
             if stop_event.is_set() or not user_speech:
                 continue
 
             print(f'\n👤 [Natanael via Voz]: "{user_speech}"')
+
+            sentence_queue: asyncio.Queue[tuple[str, bool] | None] = asyncio.Queue()
+            audio_queue: asyncio.Queue[tuple[np.ndarray, int] | None] = asyncio.Queue()
+
+            # Enfileira o Immediate Audio Ack como item #0 da própria fila de reprodução (zero race condition)
+            await audio_queue.put(synth.get_ack_audio())
+
+            t_first_audio = None
+
+            async def synth_worker(
+                s_queue: asyncio.Queue[tuple[str, bool] | None],
+                a_queue: asyncio.Queue[tuple[np.ndarray, int] | None],
+            ):
+                while True:
+                    item = await s_queue.get()
+                    if item is None:
+                        await a_queue.put(None)
+                        s_queue.task_done()
+                        break
+                    frase, is_first = item
+                    # 1. Filtra tags de ferramentas, JSON e código vazados do raciocínio interno
+                    if re.search(r"<(tool_response|tool_call|function)|{\s*\"(success|returncode|stdout|stderr)|(execute_command|read_file|write_file|list_files|web_search)\s*\(", frase, re.IGNORECASE):
+                        logger.warning(f"[VoiceAssistant] Sintetizador descartou vazamento interno: {frase[:60]}")
+                        s_queue.task_done()
+                        continue
+
+                    # 2. Remove meta-comentários entre parênteses (ex: '(Executando comando localmente)')
+                    frase_limpa = re.sub(r"^\s*\([^)]*(executando|comando|processando|localmente)[^)]*\)\s*", "", frase, flags=re.IGNORECASE).strip()
+                    if not frase_limpa or len(frase_limpa) < 2 or not re.search(r"[a-zA-ZÀ-ÿ]{2,}", frase_limpa):
+                        s_queue.task_done()
+                        continue
+
+                    try:
+                        pcm, sr = await synth.synthesize_array(frase_limpa, fast_first_chunk=is_first)
+                        await a_queue.put((pcm, sr))
+                    except Exception as e:
+                        logger.error(f"[VoiceAssistant] Erro ao sintetizar '{frase}': {e}")
+                    finally:
+                        s_queue.task_done()
+
+            async def player_worker(
+                a_queue: asyncio.Queue[tuple[np.ndarray, int] | None],
+            ):
+                nonlocal t_first_audio
+                while True:
+                    item = await a_queue.get()
+                    if item is None:
+                        a_queue.task_done()
+                        break
+                    pcm, sr = item
+                    if t_first_audio is None and len(pcm) > 4000:
+                        t_first_audio = (time.perf_counter() - t_llm_start) * 1000
+                    try:
+                        await synth.play_array(pcm, sr)
+                    except Exception as e:
+                        logger.error(f"[VoiceAssistant] Erro ao reproduzir áudio: {e}")
+                    finally:
+                        a_queue.task_done()
+
+            synth_task = asyncio.create_task(synth_worker(sentence_queue, audio_queue))
+            player_task = asyncio.create_task(player_worker(audio_queue))
 
             # Adiciona ao fluxo unificado de consciência
             await session.add_user_message(source="voice", content=user_speech)
@@ -91,11 +202,17 @@ async def main():
 
             async def handle_tool_feedback(func_name: str, func_args: dict):
                 feedback_phrase = "Executando comando no sistema..."
-                if func_name == "execute_command":
+                if func_name == "create_file":
+                    feedback_phrase = "Criando o arquivo..."
+                elif func_name == "delete_file":
+                    feedback_phrase = "Apagando o arquivo..."
+                elif func_name == "list_files":
+                    feedback_phrase = "Listando arquivos..."
+                elif func_name == "execute_command":
                     cmd = func_args.get("command", "")
                     if "Remove-Item" in cmd or "rm " in cmd or "del " in cmd:
                         feedback_phrase = "Apagando o arquivo..."
-                    elif "Set-Content" in cmd or "New-Item" in cmd:
+                    elif "Set-Content" in cmd or "New-Item" in cmd or "touch " in cmd:
                         feedback_phrase = "Criando o arquivo..."
                 elif func_name == "web_search":
                     feedback_phrase = "Pesquisando na internet..."
@@ -103,56 +220,14 @@ async def main():
                     feedback_phrase = "Lendo arquivo..."
 
                 print(f"⚡ [Feedback Imediato]: {feedback_phrase}")
-                try:
-                    await synth.speak(feedback_phrase, play_audio=True)
-                except Exception:
-                    pass
+                await sentence_queue.put((feedback_phrase, True))
 
             tools_executed = []
-            buffer_frase = []
+            buffer_texto = ""
             t_first_token = None
+            is_first_phrase = True
 
             print("\n🗣️ [Aigis Falando]: ", end="", flush=True)
-
-            sentence_queue: asyncio.Queue[str | None] = asyncio.Queue()
-            audio_queue: asyncio.Queue[tuple[np.ndarray, int] | None] = asyncio.Queue()
-
-            async def synth_worker(
-                s_queue: asyncio.Queue[str | None],
-                a_queue: asyncio.Queue[tuple[np.ndarray, int] | None],
-            ):
-                while True:
-                    frase = await s_queue.get()
-                    if frase is None:
-                        await a_queue.put(None)
-                        s_queue.task_done()
-                        break
-                    try:
-                        pcm, sr = await synth.synthesize_array(frase)
-                        await a_queue.put((pcm, sr))
-                    except Exception as e:
-                        logger.error(f"[VoiceAssistant] Erro ao sintetizar '{frase}': {e}")
-                    finally:
-                        s_queue.task_done()
-
-            async def player_worker(
-                a_queue: asyncio.Queue[tuple[np.ndarray, int] | None],
-            ):
-                while True:
-                    item = await a_queue.get()
-                    if item is None:
-                        a_queue.task_done()
-                        break
-                    pcm, sr = item
-                    try:
-                        await synth.play_array(pcm, sr)
-                    except Exception as e:
-                        logger.error(f"[VoiceAssistant] Erro ao reproduzir áudio: {e}")
-                    finally:
-                        a_queue.task_done()
-
-            synth_task = asyncio.create_task(synth_worker(sentence_queue, audio_queue))
-            player_task = asyncio.create_task(player_worker(audio_queue))
 
             async for token in chat(
                 sync_messages,
@@ -164,23 +239,26 @@ async def main():
                     t_first_token = (time.perf_counter() - t_llm_start) * 1000
 
                 tokens.append(token)
-                buffer_frase.append(token)
+                buffer_texto += token
                 print(token, end="", flush=True)
 
-                texto_acumulado = "".join(buffer_frase)
-                # Dispara a síntese vocal imediatamente ao encontrar uma pontuação de fim de sentença
-                if (
-                    any(p in texto_acumulado for p in (".", "!", "?", "\n"))
-                    and len(texto_acumulado.strip()) > 3
-                ):
-                    frase_para_falar = texto_acumulado.strip()
-                    buffer_frase = []
-                    await sentence_queue.put(frase_para_falar)
+                while True:
+                    ready_sentence, buffer_texto = extract_ready_sentence(
+                        buffer_texto, is_first_phrase=is_first_phrase
+                    )
+                    if ready_sentence is None:
+                        break
+                    await sentence_queue.put((ready_sentence, is_first_phrase))
+                    is_first_phrase = False
 
-            # Fala qualquer resto pendente no buffer
-            resto = "".join(buffer_frase).strip()
+            # Fala qualquer resto pendente no buffer ao fim da geração
+            resto = buffer_texto.strip().rstrip(",;:- ")
             if resto:
-                await sentence_queue.put(resto)
+                if not resto.endswith((".", "!", "?", ":")):
+                    resto += "."
+                await sentence_queue.put((resto, is_first_phrase))
+
+            dt_llm = (time.perf_counter() - t_llm_start) * 1000
 
             # Finaliza e aguarda as filas assíncronas de síntese e reprodução
             await sentence_queue.put(None)
@@ -188,14 +266,17 @@ async def main():
             await player_task
 
             print()
-            dt_llm = (time.perf_counter() - t_llm_start) * 1000
+            dt_total_roundtrip = (time.perf_counter() - t_llm_start) * 1000
             resposta_completa = "".join(tokens).strip()
             if not resposta_completa:
                 resposta_completa = "Comando processado com sucesso, mestre."
 
             if t_first_token is not None:
-                print(f"⏱️ [Tempo até Primeiro Token]: {t_first_token:.1f}ms")
-            print(f"⏱️ [Tempo Total de Processamento]: {dt_llm:.1f}ms")
+                print(f"⏱️ [Tempo até Primeiro Token LLM]: {t_first_token:.1f}ms")
+            if t_first_audio is not None:
+                print(f"⏱️ [Tempo até Início da Fala (TTFA)]: {t_first_audio:.1f}ms")
+            print(f"⏱️ [Tempo de Geração LLM]: {dt_llm:.1f}ms")
+            print(f"⏱️ [Duração Total do Turno]: {dt_total_roundtrip:.1f}ms")
             meta = {}
             if tools_executed:
                 meta = {
@@ -214,8 +295,6 @@ async def main():
 
 
 if __name__ == "__main__":
-    import threading
-
     try:
         asyncio.run(main())
     except KeyboardInterrupt:

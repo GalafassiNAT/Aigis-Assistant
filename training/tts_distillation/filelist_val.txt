@@ -1,0 +1,15 @@
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0045.wav|Totalizando dezessete mil linhas de código no projeto.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0099.wav|Mestre, primeira verificação concluída, partindo para a segunda etapa.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0185.wav|Relatório: listando os diretórios disponíveis no seu ambiente de trabalho.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0124.wav|Atenção: não hesite em me chamar caso precise de assistência no código.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0122.wav|Atenção: prontidão confirmada. Aguardo seu próximo comando.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0168.wav|Relatório: estou à sua disposição para qualquer tarefa técnica.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0010.wav|Operação concluída com sucesso.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0177.wav|Relatório: prontidão confirmada. Aguardo seu próximo comando.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0198.wav|Relatório: a requisição HTTP retornou código duzentos com sucesso.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0114.wav|Atenção: bom dia! Todos os módulos de vigilância e auxílio estão ativos.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0004.wav|Bom dia! Todos os módulos de vigilância e auxílio estão ativos.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0052.wav|Excelente trabalho! O código ficou limpo e direto ao ponto.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0016.wav|Criando o arquivo de rascunho no diretório solicitado.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0090.wav|Mestre, o pipeline de inferência foi otimizado para latência mínima.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0210.wav|Relatório: totalizando dezessete mil linhas de código no projeto.

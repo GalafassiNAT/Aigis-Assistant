@@ -1,0 +1,235 @@
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0086.wav|Mestre, refatorando a função assíncrona para eliminar bloqueios de entrada e saída.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0116.wav|Atenção: boa noite, mestre. Deseja realizar mais alguma automação antes de encerrar?
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0022.wav|O processo foi finalizado com código de retorno zero.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0104.wav|Mestre, tudo ótimo por aqui, obrigada por perguntar! E com você?
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0106.wav|Mestre, estou pronta para começar quando você quiser.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0201.wav|Relatório: são exatamente quatorze horas e trinta minutos.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0244.wav|Status: copiando os backups para a pasta segura no disco local.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0062.wav|Mestre, comando compreendido. Executando agora mesmo.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0030.wav|Identifiquei um conflito de mesclagem na linha quarenta e dois.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0127.wav|Atenção: arquivo salvo com sucesso na pasta de projetos.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0223.wav|Status: estou à sua disposição para qualquer tarefa técnica.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0073.wav|Mestre, lendo o conteúdo do documento para análise estrutural.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0046.wav|Você gostaria que eu abrisse o editor de código agora?
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0175.wav|Relatório: operação concluída com sucesso.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0214.wav|Relatório: tudo ótimo por aqui, obrigada por perguntar! E com você?
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0105.wav|Mestre, como vai a rotina de desenvolvimento hoje?
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0096.wav|Mestre, a porcentagem de uso de memória permaneceu em quarenta e cinco por cento.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0067.wav|Mestre, prontidão confirmada. Aguardo seu próximo comando.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0165.wav|Atenção: sistemas operacionais! Olá mestre! Estou te ouvindo pelo microfone.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0249.wav|Status: o repositório Git foi sincronizado com o servidor remoto.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0200.wav|Relatório: o pipeline de inferência foi otimizado para latência mínima.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0079.wav|Mestre, copiando os backups para a pasta segura no disco local.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0080.wav|Mestre, verificando permissões de leitura e gravação no sistema de arquivos.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0013.wav|Sim, estou te ouvindo claramente pelo microfone.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0197.wav|Relatório: iniciando o servidor local na porta oitenta e oitenta.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0150.wav|Atenção: a temperatura da unidade de processamento gráfico está em sessenta e dois graus Celsius.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0028.wav|Realizando o commit das alterações na ramificação principal.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0082.wav|Mestre, todas as asserções passaram sem nenhum erro reportado.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0100.wav|Mestre, totalizando dezessete mil linhas de código no projeto.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0235.wav|Status: aigis online. Todos os nós neurais respondendo adequadamente.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0011.wav|Identifiquei um pequeno ajuste necessário, mas já resolvi.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0134.wav|Atenção: copiando os backups para a pasta segura no disco local.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0125.wav|Atenção: aigis online. Todos os nós neurais respondendo adequadamente.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0043.wav|O ciclo de processamento levou menos de cinquenta milissegundos por frase.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0224.wav|Status: bom dia! Todos os módulos de vigilância e auxílio estão ativos.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0112.wav|Atenção: sistemas operacionais prontos e totalmente calibrados.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0121.wav|Atenção: identifiquei um pequeno ajuste necessário, mas já resolvi.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0154.wav|Atenção: primeira verificação concluída, partindo para a segunda etapa.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0131.wav|Atenção: executando script em segundo plano no PowerShell.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0005.wav|Boa tarde! Processando suas instruções em tempo real.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0053.wav|Combinado! Fico no aguardo da sua próxima instrução.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0242.wav|Status: o processo foi finalizado com código de retorno zero.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0074.wav|Mestre, apagando os arquivos temporários da compilação anterior.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0219.wav|Relatório: pode falar, estou acompanhando com atenção.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0006.wav|Boa noite, mestre. Deseja realizar mais alguma automação antes de encerrar?
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0061.wav|Mestre, boa noite, mestre. Deseja realizar mais alguma automação antes de encerrar?
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0136.wav|Atenção: executando os testes unitários da aplicação.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0139.wav|Atenção: o repositório Git foi sincronizado com o servidor remoto.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0126.wav|Atenção: criando o arquivo de rascunho no diretório solicitado.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0232.wav|Status: prontidão confirmada. Aguardo seu próximo comando.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0031.wav|Refatorando a função assíncrona para eliminar bloqueios de entrada e saída.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0205.wav|Relatório: a temperatura da unidade de processamento gráfico está em sessenta e dois graus Celsius.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0047.wav|Deseja fazer o deploy dessas alterações no ambiente de teste?
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0222.wav|Status: sistemas operacionais prontos e totalmente calibrados.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0003.wav|Estou à sua disposição para qualquer tarefa técnica.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0157.wav|Atenção: deseja fazer o deploy dessas alterações no ambiente de teste?
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0160.wav|Atenção: como vai a rotina de desenvolvimento hoje?
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0203.wav|Relatório: o arquivo possui cento e vinte e oito kilobytes de tamanho.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0107.wav|Mestre, excelente trabalho! O código ficou limpo e direto ao ponto.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0153.wav|Atenção: o ciclo de processamento levou menos de cinquenta milissegundos por frase.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0250.wav|Status: identifiquei um conflito de mesclagem na linha quarenta e dois.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0048.wav|Posso resumir as anotações do dia para você se desejar.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0212.wav|Relatório: deseja fazer o deploy dessas alterações no ambiente de teste?
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0172.wav|Relatório: comando compreendido. Executando agora mesmo.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0078.wav|Mestre, a pasta de destino foi criada e configurada corretamente.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0085.wav|Mestre, identifiquei um conflito de mesclagem na linha quarenta e dois.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0039.wav|Foram processados quinhentos e doze tokens em trezentos milissegundos.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0158.wav|Atenção: posso resumir as anotações do dia para você se desejar.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0014.wav|Não hesite em me chamar caso precise de assistência no código.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0202.wav|Relatório: a taxa de amostragem foi definida em vinte e dois mil e cinquenta hertz.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0236.wav|Status: criando o arquivo de rascunho no diretório solicitado.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0065.wav|Mestre, operação concluída com sucesso.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0034.wav|Carregando o modelo quantizado na memória da placa gráfica.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0001.wav|Olá, mestre! Como posso ajudar você hoje?
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0181.wav|Relatório: criando o arquivo de rascunho no diretório solicitado.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0169.wav|Relatório: bom dia! Todos os módulos de vigilância e auxílio estão ativos.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0204.wav|Relatório: foram processados quinhentos e doze tokens em trezentos milissegundos.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0038.wav|O arquivo possui cento e vinte e oito kilobytes de tamanho.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0101.wav|Mestre, você gostaria que eu abrisse o editor de código agora?
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0183.wav|Relatório: lendo o conteúdo do documento para análise estrutural.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0083.wav|Mestre, realizando o commit das alterações na ramificação principal.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0035.wav|O pipeline de inferência foi otimizado para latência mínima.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0123.wav|Atenção: sim, estou te ouvindo claramente pelo microfone.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0225.wav|Status: boa tarde! Processando suas instruções em tempo real.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0228.wav|Status: entendido perfeitamente. Iniciando a rotina solicitada.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0120.wav|Atenção: operação concluída com sucesso.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0129.wav|Atenção: apagando os arquivos temporários da compilação anterior.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0217.wav|Relatório: excelente trabalho! O código ficou limpo e direto ao ponto.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0213.wav|Relatório: posso resumir as anotações do dia para você se desejar.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0246.wav|Status: executando os testes unitários da aplicação.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0033.wav|A requisição HTTP retornou código duzentos com sucesso.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0132.wav|Atenção: o processo foi finalizado com código de retorno zero.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0173.wav|Relatório: entendido perfeitamente. Iniciando a rotina solicitada.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0113.wav|Atenção: estou à sua disposição para qualquer tarefa técnica.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0049.wav|Tudo ótimo por aqui, obrigada por perguntar! E com você?
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0221.wav|Status: olá, mestre! Como posso ajudar você hoje?
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0147.wav|Atenção: a taxa de amostragem foi definida em vinte e dois mil e cinquenta hertz.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0077.wav|Mestre, o processo foi finalizado com código de retorno zero.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0220.wav|Relatório: sistemas operacionais! Olá mestre! Estou te ouvindo pelo microfone.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0211.wav|Relatório: você gostaria que eu abrisse o editor de código agora?
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0239.wav|Status: apagando os arquivos temporários da compilação anterior.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0240.wav|Status: listando os diretórios disponíveis no seu ambiente de trabalho.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0141.wav|Atenção: refatorando a função assíncrona para eliminar bloqueios de entrada e saída.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0020.wav|Listando os diretórios disponíveis no seu ambiente de trabalho.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0149.wav|Atenção: foram processados quinhentos e doze tokens em trezentos milissegundos.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0111.wav|Atenção: olá, mestre! Como posso ajudar você hoje?
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0226.wav|Status: boa noite, mestre. Deseja realizar mais alguma automação antes de encerrar?
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0188.wav|Relatório: a pasta de destino foi criada e configurada corretamente.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0178.wav|Relatório: sim, estou te ouvindo claramente pelo microfone.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0133.wav|Atenção: a pasta de destino foi criada e configurada corretamente.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0066.wav|Mestre, identifiquei um pequeno ajuste necessário, mas já resolvi.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0209.wav|Relatório: primeira verificação concluída, partindo para a segunda etapa.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0216.wav|Relatório: estou pronta para começar quando você quiser.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0182.wav|Relatório: arquivo salvo com sucesso na pasta de projetos.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0145.wav|Atenção: o pipeline de inferência foi otimizado para latência mínima.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0110.wav|Mestre, sistemas operacionais! Olá mestre! Estou te ouvindo pelo microfone.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0135.wav|Atenção: verificando permissões de leitura e gravação no sistema de arquivos.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0064.wav|Mestre, tudo certo por aqui. Monitorando os recursos do sistema.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0243.wav|Status: a pasta de destino foi criada e configurada corretamente.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0194.wav|Relatório: o repositório Git foi sincronizado com o servidor remoto.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0037.wav|A taxa de amostragem foi definida em vinte e dois mil e cinquenta hertz.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0191.wav|Relatório: executando os testes unitários da aplicação.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0102.wav|Mestre, deseja fazer o deploy dessas alterações no ambiente de teste?
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0128.wav|Atenção: lendo o conteúdo do documento para análise estrutural.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0186.wav|Relatório: executando script em segundo plano no PowerShell.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0146.wav|Atenção: são exatamente quatorze horas e trinta minutos.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0055.wav|Sistemas operacionais! Olá mestre! Estou te ouvindo pelo microfone.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0017.wav|Arquivo salvo com sucesso na pasta de projetos.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0162.wav|Atenção: excelente trabalho! O código ficou limpo e direto ao ponto.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0103.wav|Mestre, posso resumir as anotações do dia para você se desejar.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0081.wav|Mestre, executando os testes unitários da aplicação.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0233.wav|Status: sim, estou te ouvindo claramente pelo microfone.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0176.wav|Relatório: identifiquei um pequeno ajuste necessário, mas já resolvi.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0015.wav|Aigis online. Todos os nós neurais respondendo adequadamente.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0084.wav|Mestre, o repositório Git foi sincronizado com o servidor remoto.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0218.wav|Relatório: combinado! Fico no aguardo da sua próxima instrução.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0143.wav|Atenção: a requisição HTTP retornou código duzentos com sucesso.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0070.wav|Mestre, aigis online. Todos os nós neurais respondendo adequadamente.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0171.wav|Relatório: boa noite, mestre. Deseja realizar mais alguma automação antes de encerrar?
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0119.wav|Atenção: tudo certo por aqui. Monitorando os recursos do sistema.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0166.wav|Relatório: olá, mestre! Como posso ajudar você hoje?
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0245.wav|Status: verificando permissões de leitura e gravação no sistema de arquivos.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0137.wav|Atenção: todas as asserções passaram sem nenhum erro reportado.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0044.wav|Primeira verificação concluída, partindo para a segunda etapa.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0156.wav|Atenção: você gostaria que eu abrisse o editor de código agora?
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0019.wav|Apagando os arquivos temporários da compilação anterior.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0069.wav|Mestre, não hesite em me chamar caso precise de assistência no código.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0054.wav|Pode falar, estou acompanhando com atenção.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0091.wav|Mestre, são exatamente quatorze horas e trinta minutos.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0095.wav|Mestre, a temperatura da unidade de processamento gráfico está em sessenta e dois graus Celsius.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0042.wav|Temos três tarefas ativas na fila assíncrona de reprodução.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0094.wav|Mestre, foram processados quinhentos e doze tokens em trezentos milissegundos.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0163.wav|Atenção: combinado! Fico no aguardo da sua próxima instrução.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0117.wav|Atenção: comando compreendido. Executando agora mesmo.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0206.wav|Relatório: a porcentagem de uso de memória permaneceu em quarenta e cinco por cento.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0199.wav|Relatório: carregando o modelo quantizado na memória da placa gráfica.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0026.wav|Executando os testes unitários da aplicação.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0238.wav|Status: lendo o conteúdo do documento para análise estrutural.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0192.wav|Relatório: todas as asserções passaram sem nenhum erro reportado.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0075.wav|Mestre, listando os diretórios disponíveis no seu ambiente de trabalho.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0059.wav|Mestre, bom dia! Todos os módulos de vigilância e auxílio estão ativos.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0170.wav|Relatório: boa tarde! Processando suas instruções em tempo real.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0193.wav|Relatório: realizando o commit das alterações na ramificação principal.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0018.wav|Lendo o conteúdo do documento para análise estrutural.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0050.wav|Como vai a rotina de desenvolvimento hoje?
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0148.wav|Atenção: o arquivo possui cento e vinte e oito kilobytes de tamanho.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0093.wav|Mestre, o arquivo possui cento e vinte e oito kilobytes de tamanho.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0159.wav|Atenção: tudo ótimo por aqui, obrigada por perguntar! E com você?
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0161.wav|Atenção: estou pronta para começar quando você quiser.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0076.wav|Mestre, executando script em segundo plano no PowerShell.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0142.wav|Atenção: iniciando o servidor local na porta oitenta e oitenta.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0021.wav|Executando script em segundo plano no PowerShell.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0097.wav|Mestre, temos três tarefas ativas na fila assíncrona de reprodução.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0032.wav|Iniciando o servidor local na porta oitenta e oitenta.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0138.wav|Atenção: realizando o commit das alterações na ramificação principal.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0118.wav|Atenção: entendido perfeitamente. Iniciando a rotina solicitada.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0187.wav|Relatório: o processo foi finalizado com código de retorno zero.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0012.wav|Prontidão confirmada. Aguardo seu próximo comando.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0068.wav|Mestre, sim, estou te ouvindo claramente pelo microfone.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0227.wav|Status: comando compreendido. Executando agora mesmo.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0089.wav|Mestre, carregando o modelo quantizado na memória da placa gráfica.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0092.wav|Mestre, a taxa de amostragem foi definida em vinte e dois mil e cinquenta hertz.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0025.wav|Verificando permissões de leitura e gravação no sistema de arquivos.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0098.wav|Mestre, o ciclo de processamento levou menos de cinquenta milissegundos por frase.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0231.wav|Status: identifiquei um pequeno ajuste necessário, mas já resolvi.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0241.wav|Status: executando script em segundo plano no PowerShell.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0087.wav|Mestre, iniciando o servidor local na porta oitenta e oitenta.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0196.wav|Relatório: refatorando a função assíncrona para eliminar bloqueios de entrada e saída.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0230.wav|Status: operação concluída com sucesso.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0040.wav|A temperatura da unidade de processamento gráfico está em sessenta e dois graus Celsius.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0215.wav|Relatório: como vai a rotina de desenvolvimento hoje?
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0088.wav|Mestre, a requisição HTTP retornou código duzentos com sucesso.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0234.wav|Status: não hesite em me chamar caso precise de assistência no código.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0179.wav|Relatório: não hesite em me chamar caso precise de assistência no código.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0041.wav|A porcentagem de uso de memória permaneceu em quarenta e cinco por cento.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0207.wav|Relatório: temos três tarefas ativas na fila assíncrona de reprodução.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0195.wav|Relatório: identifiquei um conflito de mesclagem na linha quarenta e dois.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0002.wav|Sistemas operacionais prontos e totalmente calibrados.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0208.wav|Relatório: o ciclo de processamento levou menos de cinquenta milissegundos por frase.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0072.wav|Mestre, arquivo salvo com sucesso na pasta de projetos.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0151.wav|Atenção: a porcentagem de uso de memória permaneceu em quarenta e cinco por cento.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0115.wav|Atenção: boa tarde! Processando suas instruções em tempo real.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0057.wav|Mestre, sistemas operacionais prontos e totalmente calibrados.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0108.wav|Mestre, combinado! Fico no aguardo da sua próxima instrução.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0237.wav|Status: arquivo salvo com sucesso na pasta de projetos.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0180.wav|Relatório: aigis online. Todos os nós neurais respondendo adequadamente.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0167.wav|Relatório: sistemas operacionais prontos e totalmente calibrados.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0184.wav|Relatório: apagando os arquivos temporários da compilação anterior.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0051.wav|Estou pronta para começar quando você quiser.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0144.wav|Atenção: carregando o modelo quantizado na memória da placa gráfica.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0248.wav|Status: realizando o commit das alterações na ramificação principal.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0155.wav|Atenção: totalizando dezessete mil linhas de código no projeto.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0130.wav|Atenção: listando os diretórios disponíveis no seu ambiente de trabalho.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0060.wav|Mestre, boa tarde! Processando suas instruções em tempo real.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0056.wav|Mestre, olá, mestre! Como posso ajudar você hoje?
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0024.wav|Copiando os backups para a pasta segura no disco local.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0008.wav|Entendido perfeitamente. Iniciando a rotina solicitada.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0009.wav|Tudo certo por aqui. Monitorando os recursos do sistema.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0109.wav|Mestre, pode falar, estou acompanhando com atenção.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0152.wav|Atenção: temos três tarefas ativas na fila assíncrona de reprodução.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0023.wav|A pasta de destino foi criada e configurada corretamente.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0140.wav|Atenção: identifiquei um conflito de mesclagem na linha quarenta e dois.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0229.wav|Status: tudo certo por aqui. Monitorando os recursos do sistema.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0247.wav|Status: todas as asserções passaram sem nenhum erro reportado.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0174.wav|Relatório: tudo certo por aqui. Monitorando os recursos do sistema.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0027.wav|Todas as asserções passaram sem nenhum erro reportado.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0189.wav|Relatório: copiando os backups para a pasta segura no disco local.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0036.wav|São exatamente quatorze horas e trinta minutos.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0058.wav|Mestre, estou à sua disposição para qualquer tarefa técnica.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0063.wav|Mestre, entendido perfeitamente. Iniciando a rotina solicitada.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0071.wav|Mestre, criando o arquivo de rascunho no diretório solicitado.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0190.wav|Relatório: verificando permissões de leitura e gravação no sistema de arquivos.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0007.wav|Comando compreendido. Executando agora mesmo.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0029.wav|O repositório Git foi sincronizado com o servidor remoto.
+/home/nora/Projects/Aigis-Assistant/training/tts_distillation/dataset/wavs/aigis_0164.wav|Atenção: pode falar, estou acompanhando com atenção.

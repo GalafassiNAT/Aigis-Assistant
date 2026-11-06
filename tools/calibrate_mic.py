@@ -1,3 +1,4 @@
+import os
 import time
 
 import numpy as np
@@ -7,14 +8,21 @@ print("=" * 60)
 print("🎙️ CALIBRADOR DE SENSIBILIDADE DO MICROFONE")
 print("=" * 60)
 
-# Usa o dispositivo padrão (Microfone Fuxi-H3)
+# Suporta AUDIO_INPUT_DEVICE do .env ou ambiente
+input_device = os.getenv("AUDIO_INPUT_DEVICE", None)
+if input_device:
+    try:
+        input_device = int(input_device)
+    except ValueError:
+        pass
+
 sample_rate = 16000
 chunk_size = int(sample_rate * 0.1)
 
 print("\n1. Fique em SILÊNCIO por 3 segundos para medir o ruído ambiente...")
 silence_rms = []
 with sd.InputStream(
-    samplerate=sample_rate, channels=1, dtype="float32", blocksize=chunk_size
+    device=input_device, samplerate=sample_rate, channels=1, dtype="float32", blocksize=chunk_size
 ) as stream:
     t_end = time.time() + 3.0
     while time.time() < t_end:
@@ -29,7 +37,7 @@ print(f"   Ruído ambiente médio: {avg_silence:.4f} | Pico: {max_silence:.4f}")
 print("\n2. Agora FALE NORMALMENTE por 4 segundos ('Aigis, teste de áudio')...")
 voice_rms = []
 with sd.InputStream(
-    samplerate=sample_rate, channels=1, dtype="float32", blocksize=chunk_size
+    device=input_device, samplerate=sample_rate, channels=1, dtype="float32", blocksize=chunk_size
 ) as stream:
     t_end = time.time() + 4.0
     while time.time() < t_end:

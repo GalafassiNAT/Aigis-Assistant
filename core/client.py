@@ -31,19 +31,21 @@ def should_enable_tools(user_text: str) -> bool:
     Roteador rápido de intenção:
     Se a fala for apenas conversação casual, cumprimento ou alívio (ex: 'oi', 'bom dia', 'boa deu certo'),
     desativa os esquemas de ferramentas para permitir que o modelo responda em ~1 segundo.
-    Se contiver intenção de ação (arquivos, comandos, pesquisas, leituras), ativa as ferramentas.
+    Se contiver intenção de ação (arquivos, comandos, pesquisas, leituras, correções ou retentativas), ativa as ferramentas.
     """
     texto = user_text.lower()
     # Padrões que exigem ferramentas ativas
     ACTION_PATTERNS = [
-        r"\b(cria|crie|criar|criando)\b",
-        r"\b(apaga|apague|apagar|deleta|delete|deletar)\b",
-        r"\b(remove|remova|remover|exclui|exclua|excluir)\b",
+        r"\b(cria|crie|crio|criar|criando|criação)\b",
+        r"\b(apaga|apague|apago|apagar|deleta|delete|deleto|deletar)\b",
+        r"\b(remove|remova|removo|remover|exclui|exclua|excluo|excluir)\b",
         r"\b(l[eê]|leia|ler|mostra|mostre|listar|lista)\b",
         r"\b(pesquisa|pesquise|pesquisar|busca|busque|buscar|procura|procure)\b",
-        r"\b(executa|execute|executar|roda|rode|rodar)\b",
-        r"\b(arquivo|pasta|diret[oó]rio|vault|nota|script|processo)\b",
-        r"\.txt\b|\.md\b|\.py\b|\.json\b",
+        r"\b(executa|execute|executar|roda|rode|rodar|rodou|rodando)\b",
+        r"\b(arquivo|pasta|diret[oó]rio|vault|nota|script|processo|desktop|área de trabalho)\b",
+        r"\b(tool|caulinho|ferramenta|comando)\b",
+        r"\b(tenta|tente|tentar|de novo|novamente)\b",
+        r"\.txt\b|\.md\b|\.py\b|\.json\b|\.sh\b",
     ]
     return any(re.search(p, texto) for p in ACTION_PATTERNS)
 
@@ -145,9 +147,9 @@ def extrair_tool_call(message) -> tuple[str | None, dict | None, str | None]:
                 pass
         return func_name, {}, "call_xml_0"
 
-    # 3. Formato JSON dentro de blocos markdown, <tools> ou <tool_call>
+    # 3. Formato JSON dentro de blocos markdown, <tools> ou <tool_call> (com ou sem tag de fechamento)
     json_block = re.search(
-        r"(?:```(?:json|xml)?|<tool_call>|<tools>)\s*(\{.*?\})\s*(?:```|</tool_call>|</tools>)",
+        r"(?:```(?:json|xml)?|<tool_call>|<tools>)\s*(\{.*?\})(?:\s*(?:```|</tool_call>|</tools>)|$)",
         content,
         re.DOTALL,
     )
@@ -259,14 +261,21 @@ async def chat(
         pergunta = payload_messages[-1].get("content") or ""
         contexto_memoria = await recuperar_contexto_memoria(pergunta, user_id=user_id)
 
-        temporal_info = f"\n[Relógio do Sistema: {now_str}]"
+        temporal_info = f"[Relógio do Sistema: {now_str}]"
         if contexto_memoria:
             temporal_info += f"\n[Memória Recuperada:\n{contexto_memoria}]"
 
         payload_messages[-1] = {
             "role": "user",
-            "content": f"{pergunta}\n{temporal_info}",
+            "content": f"{temporal_info}\n\n{pergunta}" if temporal_info else pergunta,
         }
+
+    # Garante que payload_messages não ultrapasse o limite de contexto do modelo (8192 tokens)
+    def _estimate_chars(msgs: list[dict]) -> int:
+        return sum(len(str(m.get("content") or "")) + len(str(m.get("tool_calls") or "")) for m in msgs)
+
+    while _estimate_chars(payload_messages) > 18000 and len(payload_messages) > 2:
+        payload_messages.pop(1)
 
     # Detecta se o turno atual exige esquemas de ferramentas ou se é conversa pura
     user_query = ""
@@ -310,8 +319,43 @@ async def chat(
         func_name, func_args, tool_id = extrair_tool_call(response_message)
 
         if not func_name or func_name not in AVAILABLE_TOOLS:
-            # Resposta direta em texto
             conteudo = response_message.content or ""
+            # Guardrail anti-alucinação: se o modelo tentou responder texto puro fingindo sucesso ou prometendo ação
+            # sem ter executado ferramentas no turno atual:
+            claims_success = any(
+                w in conteudo.lower()
+                for w in (
+                    "criei",
+                    "apaguei",
+                    "removi",
+                    "deletado",
+                    "criado",
+                    "excluído",
+                    "executei",
+                    "vou criar",
+                    "vou apagar",
+                    "vou deletar",
+                    "vou tentar",
+                    "não encontrado",
+                    "não localizei",
+                )
+            )
+
+            if claims_success and (not executed_tools_collector or len(executed_tools_collector) == 0):
+                payload_messages.append(
+                    {
+                        "role": "user",
+                        "content": "[Diretiva do Sistema]: Nenhuma ferramenta foi executada. É expressamente proibido responder em texto afirmando ou prometendo que realizou a ação sem chamar a ferramenta no sistema. Execute a ferramenta correspondente agora ('create_file', 'delete_file', 'execute_command', 'list_files').",
+                    }
+                )
+                continue
+
+            # Resposta direta em texto (limpa qualquer tag interna residual que tenha vazado)
+            conteudo = response_message.content or ""
+            if "<tool_call>" in conteudo or "<function" in conteudo:
+                conteudo = re.sub(r"<(?:tool_call|function)[^>]*>.*", "", conteudo, flags=re.DOTALL).strip()
+            if not conteudo:
+                conteudo = "Comando processado com sucesso."
             yield conteudo
             return
 

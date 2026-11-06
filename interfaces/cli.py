@@ -12,7 +12,11 @@ async def main():
     print("=== Welcome to the chat! Type 'exit' to quit. ===\n")
 
     while True:
-        user_input = await asyncio.to_thread(input, "You: ")
+        try:
+            user_input = await asyncio.to_thread(input, "You: ")
+        except (EOFError, KeyboardInterrupt):
+            print("\nBye bye!")
+            break
 
         if not user_input.strip():
             continue

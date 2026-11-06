@@ -27,7 +27,8 @@ def fast_load_16k(wav_path: str) -> np.ndarray:
     return data.astype(np.float32)
 
 
-hubert = HubertModel.from_pretrained("r3gm/hubert_base")
+device = "cuda" if torch.cuda.is_available() else "cpu"
+hubert = HubertModel.from_pretrained("r3gm/hubert_base").to(device)
 hubert.eval()
 
 print("READY")
@@ -40,7 +41,7 @@ for line in sys.stdin:
     try:
         req = json.loads(line)
         audio = fast_load_16k(req["input_wav"])
-        inputs = torch.from_numpy(audio).float().unsqueeze(0)
+        inputs = torch.from_numpy(audio).float().unsqueeze(0).to(device)
         with torch.no_grad():
             outputs = hubert(inputs, output_hidden_states=True)
             feats = outputs.hidden_states[12]

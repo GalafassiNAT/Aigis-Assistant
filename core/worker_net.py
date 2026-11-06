@@ -1,5 +1,6 @@
 import gc
 import json
+import os
 import sys
 import traceback
 
@@ -24,16 +25,38 @@ def fast_load_16k(wav_path: str) -> np.ndarray:
 
 
 try:
-    rmvpe = RMVPE("models/rvc/rmvpe.pt", is_half=False, device="cpu")
+    import faiss
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    rmvpe = RMVPE("models/rvc/rmvpe.pt", is_half=False, device=device)
     onnx_path = "models/rvc/aigis/aigis_model.onnx"
     opts = ort.SessionOptions()
     opts.log_severity_level = 3
 
-    # DirectML na Radeon RX 7600
+    # Dicionário acústico anatômico FAISS para restaurar timbre Persona 3 autêntico
+    index_path = "models/rvc/aigis/AigisMrM0dZ.index"
+    index = None
+    big_npy = None
+    if os.path.exists(index_path):
+        index = faiss.read_index(index_path)
+        big_npy = index.reconstruct_n(0, index.ntotal)
+
+    # Detecta automaticamente provedores compativeis com Linux ou Windows
+    available_providers = set(ort.get_available_providers())
+    preferred_order = [
+        "ROCMExecutionProvider",
+        "CUDAExecutionProvider",
+        "DmlExecutionProvider",
+        "CPUExecutionProvider",
+    ]
+    providers = [p for p in preferred_order if p in available_providers]
+    if not providers:
+        providers = ["CPUExecutionProvider"]
+
     sess = ort.InferenceSession(
         onnx_path,
         sess_options=opts,
-        providers=["DmlExecutionProvider", "CPUExecutionProvider"],
+        providers=providers,
     )
     tgt_sr = 40000
 
@@ -70,21 +93,55 @@ for line in sys.stdin:
         if pitch_shift != 0.0:
             f0 = f0 * (2.0 ** (pitch_shift / 12.0))
 
+        # 1. Suavização natural de pitch (elimina tremolo/flutter sem saltos de oitava)
+        voiced = f0 > 0
+        if np.any(voiced):
+            f0[voiced] = signal.medfilt(f0[voiced], kernel_size=3)
+        # Zera ruídos espúrios isolados abaixo do piso vocal da Aigis (< 110Hz)
+        f0[(f0 > 0) & (f0 < 110.0)] = 0.0
+
         feats_raw = np.load(req["feats_npy"])
-        # Interpolação temporal 2x usando PyTorch em CPU rápido
-        feats_t = torch.from_numpy(feats_raw).permute(0, 2, 1)
-        feats_t = torch.nn.functional.interpolate(feats_t, scale_factor=2).permute(0, 2, 1)
-        feats = feats_t.numpy()
+        feats0 = torch.from_numpy(feats_raw)
+
+        # 2. Projeção de Faringe via FAISS k-NN (Dicionário de Timbre Aigis)
+        index_rate = 0.60
+        protect = 0.33
+        if index is not None and index_rate > 0:
+            npy = feats_raw[0].astype(np.float32)
+            score, ix = index.search(npy, k=8)
+            weight = np.square(1.0 / np.maximum(score, 1e-6))
+            weight /= weight.sum(axis=1, keepdims=True)
+            npy_retr = np.sum(big_npy[ix] * np.expand_dims(weight, axis=2), axis=1)
+            feats_proj = torch.from_numpy(npy_retr).unsqueeze(0) * index_rate + (1.0 - index_rate) * feats0
+        else:
+            feats_proj = feats0
+
+        # 3. Interpolação LINEAR contínua (elimina 100% o artefato metálico de 50Hz)
+        feats_t = torch.nn.functional.interpolate(
+            feats_proj.permute(0, 2, 1), scale_factor=2, mode="linear", align_corners=False
+        ).permute(0, 2, 1)
+        feats0_t = torch.nn.functional.interpolate(
+            feats0.permute(0, 2, 1), scale_factor=2, mode="linear", align_corners=False
+        ).permute(0, 2, 1)
+
+        # 4. Proteção de Consoantes Surdas e Plosivas (impede aspereza metálica em 't', 'k', 's')
+        eff_len = min(feats_t.shape[1], len(f0))
+        pitchf_sub = torch.from_numpy(f0[:eff_len].astype(np.float32)).unsqueeze(0)
+        pitch_mask = pitchf_sub.clone()
+        pitch_mask[pitchf_sub > 0] = 1.0
+        pitch_mask[pitchf_sub < 1] = protect
+        pitch_mask = pitch_mask.unsqueeze(-1)
+        feats = (feats_t[:, :eff_len, :] * pitch_mask + feats0_t[:, :eff_len, :] * (1.0 - pitch_mask)).numpy()
 
         f0_mel_min = 1127 * np.log(1 + 50 / 700)
         f0_mel_max = 1127 * np.log(1 + 1100 / 700)
-        f0_mel = 1127 * np.log(1 + f0 / 700)
+        f0_mel = 1127 * np.log(1 + f0[:eff_len] / 700)
         f0_mel[f0_mel > 0] = (f0_mel[f0_mel > 0] - f0_mel_min) * 254 / (f0_mel_max - f0_mel_min) + 1
         f0_mel[f0_mel <= 1] = 1
         f0_mel[f0_mel > 255] = 255
         f0_coarse = np.rint(f0_mel).astype(np.int64)
 
-        p_len = min(feats.shape[1], len(f0))
+        p_len = eff_len
         feats_ready = np.ascontiguousarray(feats[:, :p_len, :], dtype=np.float32)
         pitch_ready = np.ascontiguousarray(f0_coarse[:p_len].reshape(1, -1), dtype=np.int64)
         pitchf_ready = np.ascontiguousarray(f0[:p_len].reshape(1, -1), dtype=np.float32)

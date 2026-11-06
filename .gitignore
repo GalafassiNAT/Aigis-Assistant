@@ -18,19 +18,10 @@ venv/
 mambafs*
 
 # Modelos Pesados & Pesos Neurais (Downloads locais)
-models/*.gguf
-models/**/*.gguf
-models/kokoro/*.onnx
-models/kokoro/*.bin
-models/rvc/*.pt
-models/rvc/*.pth
-models/rvc/*.onnx
-models/rvc/*.zip
-models/rvc/aigis/*.pth
-models/rvc/aigis/*.onnx
-models/rvc/aigis/*.zip
-models/rvc/aigis/*.index
-models/rvc/.cache/
+models/
+tools/CosyVoice/
+training/f5_ptbr/
+.mcp.json
 
 # Áudios e Arquivos Temporários de Teste
 *.wav

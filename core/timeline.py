@@ -128,7 +128,7 @@ class SharedSession:
         Reconstitui tool_calls e tool results gravados no metadata para que
         o modelo de raciocínio compreenda o fluxo real de ações executadas.
         """
-        events = await asyncio.to_thread(self._sync_get_recent_events, 20)
+        events = await asyncio.to_thread(self._sync_get_recent_events, 6)
         if not events:
             return self.context.get_messages()
 
@@ -155,14 +155,30 @@ class SharedSession:
                         }
                     )
                     for res in tool_results:
+                        raw_c = res.get("content", "")
+                        if len(raw_c) > 600:
+                            raw_c = raw_c[:600] + "... [resultado truncado no histórico]"
                         msgs.append(
                             {
                                 "role": "tool",
                                 "tool_call_id": res.get("tool_call_id", "call_0"),
-                                "content": res.get("content", ""),
+                                "content": raw_c,
                             }
                         )
-                msgs.append({"role": "assistant", "content": content})
+                    msgs.append({"role": "assistant", "content": content})
+                else:
+                    # Se não houve ferramentas chamadas, filtra eventuais respostas alucinadas de ações no SO
+                    hallucination_markers = (
+                        "criei o arquivo",
+                        "criei um",
+                        "arquivo apagado",
+                        "apaguei o",
+                        "removi o",
+                        "executando comando para apagar",
+                        "executei o comando",
+                    )
+                    if not any(marker in content.lower() for marker in hallucination_markers):
+                        msgs.append({"role": "assistant", "content": content})
             else:
                 prefix = "[Comando por Voz no PC]" if src == "voice" else "[Mensagem via Discord]"
                 msgs.append({"role": "user", "content": f"{prefix}: {content}"})

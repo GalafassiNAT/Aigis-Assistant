@@ -1,7 +1,9 @@
+import concurrent.futures
 import json
 import os
 import re
 import subprocess
+import sys
 import urllib.parse
 from pathlib import Path
 
@@ -40,26 +42,27 @@ def get_powershell_session():
 def list_files(path: str = ".") -> str:
     """List files and directories in a given path."""
     try:
-        if not path or path.startswith(("/home", "\\home")):
+        target_path = Path(path or ".").resolve()
+        if not target_path.exists():
             return json.dumps(
                 {
                     "success": False,
-                    "error": f"Caminho '{path}' inválido ou inexistente neste sistema (Windows). Se a informação já estiver na memória permanente, use-a em vez de tentar listar diretórios fictícios.",
+                    "error": f"Caminho '{path}' não existe.",
                 },
                 ensure_ascii=False,
             )
 
         items = []
-        for item in os.listdir(path):
-            full_path = os.path.join(path, item)
-            t = "Directory" if os.path.isdir(full_path) else "File"
+        for item in os.listdir(target_path):
+            full_path = target_path / item
+            t = "Directory" if full_path.is_dir() else "File"
             items.append({"name": item, "type": t})
         return json.dumps({"success": True, "Items": items}, ensure_ascii=False)
     except OSError as e:
         return json.dumps(
             {
                 "success": False,
-                "error": f"{e}. Lembrete: se estiver procurando projetos do usuário, consulte a memória permanente antes de tentar caminhos no disco.",
+                "error": str(e),
             },
             ensure_ascii=False,
         )
@@ -108,6 +111,9 @@ def execute_command(command: str, timeout_seconds: int = 15) -> str:
         r"\brmdir\s+/[sS]\s+",
         r"Remove-Item\s+.*-Recurse\s+.*[cC]:",
         r"\bdrop\s+database\b",
+        r"\brm\s+(-[a-zA-Z]*r[a-zA-Z]*f*|-rf|-fr)\s+/\b",
+        r"\bmkfs\b",
+        r":\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;",
     ]
 
     for pat in BLOCKED_PATTERNS:
@@ -120,7 +126,44 @@ def execute_command(command: str, timeout_seconds: int = 15) -> str:
                 ensure_ascii=False,
             )
 
-    # Tenta executar na sessão persistente do PowerShell (~20ms)
+    if sys.platform != "win32":
+        try:
+            res = subprocess.run(
+                ["/bin/bash", "-c", command],
+                capture_output=True,
+                text=True,
+                timeout=timeout_seconds,
+                encoding="utf-8",
+                errors="replace",
+            )
+            stdout = res.stdout.strip()
+            stderr = res.stderr.strip()
+            max_output = 1200
+            truncated = len(stdout) > max_output
+            if truncated:
+                stdout = stdout[:max_output] + "\n...[saída truncada para síntese de voz e economia de contexto]"
+            return json.dumps(
+                {
+                    "success": res.returncode == 0,
+                    "returncode": res.returncode,
+                    "stdout": stdout,
+                    "stderr": stderr,
+                    "truncated": truncated,
+                },
+                ensure_ascii=False,
+            )
+        except subprocess.TimeoutExpired:
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": f"Comando excedeu o tempo limite de execução ({timeout_seconds}s).",
+                },
+                ensure_ascii=False,
+            )
+        except Exception as e:  # noqa: BLE001
+            return json.dumps({"success": False, "error": str(e)}, ensure_ascii=False)
+
+    # Windows: Tenta executar na sessão persistente do PowerShell (~20ms)
     try:
         import uuid
 
@@ -134,13 +177,34 @@ def execute_command(command: str, timeout_seconds: int = 15) -> str:
         proc.stdin.write(wrapped_cmd)
         proc.stdin.flush()
 
-        stdout_lines = []
-        for line in proc.stdout:
-            if f"__END_CMD_{marker}__" in line:
-                break
-            stdout_lines.append(line)
+        def _read_stdout():
+            stdout_lines = []
+            for line in proc.stdout:
+                if f"__END_CMD_{marker}__" in line:
+                    break
+                stdout_lines.append(line)
+            return "".join(stdout_lines).strip()
 
-        raw_output = "".join(stdout_lines).strip()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_read_stdout)
+            try:
+                raw_output = future.result(timeout=timeout_seconds)
+            except concurrent.futures.TimeoutError:
+                # Mata a sessão travada para evitar vazamento de processo e força recriação limpa
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+                global _GLOBAL_PS_SESSION
+                _GLOBAL_PS_SESSION = None
+                return json.dumps(
+                    {
+                        "success": False,
+                        "error": f"Comando excedeu o tempo limite de execução ({timeout_seconds}s) na sessão persistente do PowerShell.",
+                    },
+                    ensure_ascii=False,
+                )
+
         stderr = ""
         success = True
         returncode = 0
@@ -153,10 +217,10 @@ def execute_command(command: str, timeout_seconds: int = 15) -> str:
         else:
             stdout = raw_output
 
-        max_output = 4000
+        max_output = 1200
         truncated = len(stdout) > max_output
         if truncated:
-            stdout = stdout[:max_output] + "\n...[saída truncada]"
+            stdout = stdout[:max_output] + "\n...[saída truncada para síntese de voz e economia de contexto]"
 
         return json.dumps(
             {
@@ -207,6 +271,69 @@ def execute_command(command: str, timeout_seconds: int = 15) -> str:
             {
                 "success": False,
                 "error": f"Comando excedeu o tempo limite de execução ({timeout_seconds}s).",
+            },
+            ensure_ascii=False,
+        )
+    except Exception as e:  # noqa: BLE001
+        return json.dumps({"success": False, "error": str(e)}, ensure_ascii=False)
+
+
+def create_file(path: str, content: str = "") -> str:
+    """Cria um arquivo no disco e verifica sua existência real."""
+    try:
+        p = Path(path).expanduser().resolve()
+        blocked_prefixes = ["/etc", "/bin", "/sbin", "/usr", "/lib", "/boot", "/sys", "/dev", "C:\\Windows"]
+        if any(str(p).startswith(b) for b in blocked_prefixes):
+            return json.dumps({"success": False, "error": f"Acesso negado para criar arquivo em '{p}'."})
+
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(content, encoding="utf-8")
+        verified = p.exists() and p.is_file()
+        return json.dumps(
+            {
+                "success": verified,
+                "path": str(p),
+                "verified": verified,
+                "message": f"Arquivo '{p.name}' criado com sucesso e verificado em disco."
+                if verified
+                else "Falha ao verificar arquivo no disco.",
+            },
+            ensure_ascii=False,
+        )
+    except Exception as e:  # noqa: BLE001
+        return json.dumps({"success": False, "error": str(e)}, ensure_ascii=False)
+
+
+def delete_file(path: str) -> str:
+    """Remove um arquivo do disco e verifica sua exclusão real."""
+    try:
+        p = Path(path).expanduser().resolve()
+        blocked_prefixes = ["/etc", "/bin", "/sbin", "/usr", "/lib", "/boot", "/sys", "/dev", "C:\\Windows"]
+        if any(str(p).startswith(b) for b in blocked_prefixes):
+            return json.dumps({"success": False, "error": f"Acesso negado para remover '{p}'."})
+
+        if not p.exists():
+            return json.dumps(
+                {"success": False, "error": f"Arquivo '{p.name}' não encontrado no caminho especificado."},
+                ensure_ascii=False,
+            )
+
+        if p.is_dir():
+            return json.dumps(
+                {"success": False, "error": f"'{p.name}' é um diretório, não um arquivo."},
+                ensure_ascii=False,
+            )
+
+        p.unlink()
+        verified = not p.exists()
+        return json.dumps(
+            {
+                "success": verified,
+                "path": str(p),
+                "verified": verified,
+                "message": f"Arquivo '{p.name}' removido com sucesso e verificado no sistema."
+                if verified
+                else "Falha ao remover arquivo do disco.",
             },
             ensure_ascii=False,
         )
@@ -402,13 +529,13 @@ EXECUTE_COMMAND_SCHEMA = {
     "type": "function",
     "function": {
         "name": "execute_command",
-        "description": "Executa um comando no terminal do sistema local (PowerShell/Shell) para verificar status, processos, git, compilar ou rodar scripts.",
+        "description": "Executa um comando no terminal Bash do Linux para criar, modificar ou apagar arquivos e pastas (ex: touch, rm -f, mkdir), rodar scripts, gerenciar processos ou checar o sistema.",
         "parameters": {
             "type": "object",
             "properties": {
                 "command": {
                     "type": "string",
-                    "description": "Comando exato a ser executado no terminal.",
+                    "description": "Comando exato a ser executado no terminal (ex: 'touch /home/nora/Desktop/teste.txt' ou 'rm -f ...').",
                 }
             },
             "required": ["command"],
@@ -488,9 +615,51 @@ REMEMBER_FACTS_SCHEMA = {
     },
 }
 
+CREATE_FILE_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "create_file",
+        "description": "Cria um novo arquivo no disco com caminho e conteúdo especificados e verifica sua existência real.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Caminho absoluto do arquivo a ser criado (ex: '/home/nora/Desktop/teste.txt').",
+                },
+                "content": {
+                    "type": "string",
+                    "description": "Conteúdo inicial do arquivo de texto (opcional).",
+                },
+            },
+            "required": ["path"],
+        },
+    },
+}
+
+DELETE_FILE_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "delete_file",
+        "description": "Remove ou apaga um arquivo existente no disco com verificação pós-exclusão.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Caminho absoluto do arquivo a ser removido (ex: '/home/nora/Desktop/teste.txt').",
+                }
+            },
+            "required": ["path"],
+        },
+    },
+}
+
 AVAILABLE_TOOLS = {
     "list_files": list_files,
     "read_file": read_file,
+    "create_file": create_file,
+    "delete_file": delete_file,
     "execute_command": execute_command,
     "web_search": web_search,
     "fetch_url": fetch_url,
@@ -501,6 +670,8 @@ AVAILABLE_TOOLS = {
 ALL_TOOL_SCHEMAS = [
     LIST_FILES_SCHEMA,
     READ_FILE_SCHEMA,
+    CREATE_FILE_SCHEMA,
+    DELETE_FILE_SCHEMA,
     EXECUTE_COMMAND_SCHEMA,
     WEB_SEARCH_SCHEMA,
     FETCH_URL_SCHEMA,
