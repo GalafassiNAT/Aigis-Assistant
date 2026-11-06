@@ -300,6 +300,45 @@ class ProactiveLifeHub:
         await self.bus.set_state("daily_briefing", payload, expire_seconds=43200)
         return briefing
 
+    async def check_new_emails_and_notify(self):
+        """
+        Verifica se chegaram novos emails importantes ou diretos
+        e publica no canal #aigis-inbox do Discord com alerta.
+        """
+        try:
+            emails = await self.fetch_unread_gmails(max_results=5)
+            notified_emails = await self.bus.get_state("notified_emails") or []
+
+            for em in emails:
+                em_id = em["id"]
+                if em_id in notified_emails:
+                    continue
+
+                subject = em.get("subject", "Sem assunto")
+                sender = em.get("sender", "Desconhecido")
+                snippet = em.get("snippet", "")
+
+                # Detecta se é alta prioridade ou email direto
+                is_urgent = any(k in subject.lower() for k in ("importante", "urgente", "vaga", "estágio", "estagio", "entrevista"))
+                priority = "Alta" if is_urgent else "Normal"
+
+                payload = {
+                    "type": "inbox_alert",
+                    "sender": sender,
+                    "subject": subject,
+                    "summary": snippet or "Novo email recebido na caixa de entrada.",
+                    "date_str": em.get("date", ""),
+                    "priority": priority,
+                    "ping_owner": is_urgent,
+                }
+                await self.bus.publish(CH_PROACTIVE_ALERTS, payload)
+                notified_emails.append(em_id)
+                await self.bus.set_state("notified_emails", notified_emails[-50:], expire_seconds=86400)
+                logger.info(f"[ProactiveHub] Alerta de novo email emitido no Discord: '{subject}'")
+
+        except Exception as e:
+            logger.debug(f"[ProactiveHub] Erro na checagem de emails: {e}")
+
     async def check_upcoming_reminders_and_ping(self):
         """
         Verifica se há algum compromisso começando nos próximos 15 a 30 minutos

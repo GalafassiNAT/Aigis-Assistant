@@ -171,16 +171,26 @@ async def on_ready():
                 location=payload.get("location", ""),
                 ping_owner=payload.get("ping_owner", False),
             )
+        elif ev_type == "inbox_alert":
+            await hub.post_inbox_email(
+                sender=payload.get("sender", "Desconhecido"),
+                subject=payload.get("subject", "Sem assunto"),
+                summary=payload.get("summary", ""),
+                date_str=payload.get("date_str", ""),
+                priority=payload.get("priority", "Normal"),
+                ping_owner=payload.get("ping_owner", False),
+            )
 
     await bus.subscribe(CH_PROACTIVE_ALERTS, _handle_proactive_event)
 
-    # 4. Worker contínuo de checagem de lembretes (roda a cada 60s em background)
+    # 4. Worker contínuo de checagem de lembretes e emails (roda a cada 60s em background)
     async def _reminder_daemon():
         while True:
             try:
                 await proactive_hub.check_upcoming_reminders_and_ping()
+                await proactive_hub.check_new_emails_and_notify()
             except Exception as e:
-                logger.debug(f"[DiscordDaemon] Erro ao checar lembretes: {e}")
+                logger.debug(f"[DiscordDaemon] Erro ao checar lembretes/emails: {e}")
             await asyncio.sleep(60)
 
     asyncio.create_task(_reminder_daemon())
