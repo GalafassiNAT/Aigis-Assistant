@@ -25,10 +25,58 @@ VAULT_DIR = Path(
 )
 
 
+NOTIFIED_EMAILS_FILE = Path("data/notified_emails.json")
+
+AUTOMATED_SENDER_PATTERNS = [
+    r"no[-_]?reply",
+    r"donotreply",
+    r"do-not-reply",
+    r"nao[-_]?responda",
+    r"notification",
+    r"notificac",
+    r"newsletter",
+    r"news@",
+    r"boletim",
+    r"digest",
+    r"updates@",
+    r"replies@",
+    r"jobalerts",
+    r"jobs-noreply",
+    r"mailer[-_]?daemon",
+    r"googlecommunityteam",
+    r"googledev",
+    r"accounts\.google\.com",
+    r"mailer\.udemy",
+    r"mail\.c6bank",
+    r"oracle-mail",
+    r"uber\.com",
+    r"linkedin\.com",
+    r"bounce",
+]
+
+
 class ProactiveLifeHub:
     def __init__(self, vault_path: Path = VAULT_DIR):
         self.vault_path = vault_path
         self.bus = EventBus.get_instance()
+
+    def _load_notified_emails(self) -> set[str]:
+        if NOTIFIED_EMAILS_FILE.exists():
+            try:
+                data = json.loads(NOTIFIED_EMAILS_FILE.read_text(encoding="utf-8"))
+                return set(data)
+            except Exception:
+                pass
+        return set()
+
+    def _save_notified_email(self, email_id: str):
+        try:
+            current = self._load_notified_emails()
+            current.add(email_id)
+            NOTIFIED_EMAILS_FILE.parent.mkdir(parents=True, exist_ok=True)
+            NOTIFIED_EMAILS_FILE.write_text(json.dumps(list(current)), encoding="utf-8")
+        except Exception as e:
+            logger.warning(f"[ProactiveHub] Erro ao salvar notified_email: {e}")
 
     # =========================================================================
     # 1. Scanner Local do Obsidian Vault
@@ -204,43 +252,68 @@ class ProactiveLifeHub:
 
             # Busca mensagens não lidas na caixa de entrada, filtrando promoções e redes sociais
             # Exclui categorias automatizadas comuns do Gmail: promotions, social, spam, trash
-            query = "is:unread in:inbox -category:promotions -category:social"
+            query = "is:unread in:inbox -category:promotions -category:social -category:spam"
             results = await asyncio.to_thread(
                 service.users()
                 .messages()
-                .list(userId="me", q=query, maxResults=max_results * 2)
+                .list(userId="me", q=query, maxResults=max_results * 4)
                 .execute
             )
             messages = results.get("messages", [])
             parsed_emails = []
-
-            # Palavras-chave e remetentes automáticos/newsletters para ignorar na triagem proativa
-            IGNORE_KEYWORDS = [
-                "desconto", "cupom", "black friday", "promoção", "promocao",
-                "newsletter", "unsubscribe", "cancelar inscrição", "oferta",
-                "compre agora", "notificação de login", "segurança da conta",
-                "termo atualizado", "café com ia", "filipe deschamps newsletter",
-                "newsletters-noreply", "jobalerts-noreply", "digest", "semanal",
-                "boletim", "edição #", "edicao #",
-            ]
 
             for msg_ref in messages:
                 if len(parsed_emails) >= max_results:
                     break
 
                 msg_data = await asyncio.to_thread(
-                    service.users().messages().get(userId="me", id=msg_ref["id"], format="metadata").execute
+                    service.users().messages().get(userId="me", id=msg_ref["id"], format="full").execute
                 )
-                headers = msg_data.get("payload", {}).get("headers", [])
-                subject = next((h["value"] for h in headers if h["name"].lower() == "subject"), "Sem assunto")
-                sender = next((h["value"] for h in headers if h["name"].lower() == "from"), "Desconhecido")
-                date = next((h["value"] for h in headers if h["name"].lower() == "date"), "")
+                headers_raw = msg_data.get("payload", {}).get("headers", [])
+                headers_dict = {h["name"].lower(): h["value"] for h in headers_raw}
+
+                subject = headers_dict.get("subject", "Sem assunto")
+                sender = headers_dict.get("from", "Desconhecido")
+                date = headers_dict.get("date", "")
                 snippet = msg_data.get("snippet", "")
 
-                # Triagem: Ignora emails com termos puramente promocionais ou newsletters
-                texto_email = f"{subject} {snippet} {sender}".lower()
-                if any(kw in texto_email for kw in IGNORE_KEYWORDS):
-                    continue
+                # Se o assunto contiver [IMPORTANTE] ou [URGENTE], tem prioridade e passa
+                is_explicit_important = bool(re.search(r"\[?(importante|urgente)\]?", subject, re.IGNORECASE))
+
+                if not is_explicit_important:
+                    # 1. Filtra qualquer mailing list / newsletter (List-Unsubscribe, List-Id, etc.)
+                    if any(h in headers_dict for h in ("list-unsubscribe", "list-id", "list-post", "list-owner", "precedence")):
+                        continue
+
+                    # 2. Filtra remetentes automáticos/newsletters/no-reply
+                    sender_lower = sender.lower()
+                    if any(re.search(pat, sender_lower) for pat in AUTOMATED_SENDER_PATTERNS):
+                        continue
+
+                    # 3. Filtra padrões de assuntos automatizados comuns
+                    subj_lower = subject.lower()
+                    if any(
+                        k in subj_lower
+                        for k in (
+                            "security alert",
+                            "alerta de segurança",
+                            "security notification",
+                            "got 5 minutes",
+                            "the monthly build",
+                            "black friday",
+                            "desconto",
+                            "cupom",
+                            "termo atualizado",
+                            "novas vagas semelhantes",
+                            "está contratando:",
+                            "recrutando agora",
+                            "edição #",
+                            "edicao #",
+                            "boletim",
+                            "newsletter",
+                        )
+                    ):
+                        continue
 
                 parsed_emails.append({
                     "id": msg_ref["id"],
@@ -310,7 +383,12 @@ class ProactiveLifeHub:
         """
         try:
             emails = await self.fetch_unread_gmails(max_results=5)
-            notified_emails = await self.bus.get_state("notified_emails") or []
+            notified_emails = self._load_notified_emails()
+
+            # Resgata também histórico do Redis para sincronização redundante
+            redis_notified = await self.bus.get_state("notified_emails") or []
+            if isinstance(redis_notified, list):
+                notified_emails.update(redis_notified)
 
             for em in emails:
                 em_id = em["id"]
@@ -335,8 +413,9 @@ class ProactiveLifeHub:
                     "ping_owner": is_urgent,
                 }
                 await self.bus.publish(CH_PROACTIVE_ALERTS, payload)
-                notified_emails.append(em_id)
-                await self.bus.set_state("notified_emails", notified_emails[-50:], expire_seconds=86400)
+                self._save_notified_email(em_id)
+                notified_emails.add(em_id)
+                await self.bus.set_state("notified_emails", list(notified_emails)[-100:])
                 logger.info(f"[ProactiveHub] Alerta de novo email emitido no Discord: '{subject}'")
 
         except Exception as e:

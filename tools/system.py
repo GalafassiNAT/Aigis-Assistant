@@ -840,17 +840,51 @@ def read_email_body(email_id: str | None = None, subject_query: str | None = Non
         service = build("gmail", "v1", credentials=creds)
 
         target_id = email_id
+        if not target_id and not subject_query:
+            # Se nenhum parâmetro foi passado, pega o email não lido mais recente da caixa de entrada
+            res_rec = service.users().messages().list(userId="me", q="is:unread in:inbox", maxResults=1).execute()
+            msgs_rec = res_rec.get("messages", [])
+            if msgs_rec:
+                target_id = msgs_rec[0]["id"]
+
         if not target_id and subject_query:
-            res = service.users().messages().list(userId="me", q=f"subject:{subject_query}", maxResults=1).execute()
-            msgs = res.get("messages", [])
-            if msgs:
-                target_id = msgs[0]["id"]
-            else:
-                # Tenta busca global
-                res_broad = service.users().messages().list(userId="me", q=subject_query, maxResults=1).execute()
-                msgs_broad = res_broad.get("messages", [])
-                if msgs_broad:
-                    target_id = msgs_broad[0]["id"]
+            clean_q = subject_query.strip().lower()
+            clean_q = re.sub(r"^(o|a|os|as|do|da|de|um|uma)\s+", "", clean_q)
+            clean_q = re.sub(r"\b(e-?mail|mensagem)\b", "", clean_q).strip()
+
+            is_urgency_term = any(u in clean_q for u in ("urgente", "importante", "alerta", "prioridade", "prioritário"))
+
+            # 1. Prioridade máxima: vasculha emails não lidos recentes na caixa de entrada
+            try:
+                res_unread = service.users().messages().list(userId="me", q="is:unread in:inbox", maxResults=10).execute()
+                for m in res_unread.get("messages", []):
+                    m_meta = service.users().messages().get(userId="me", id=m["id"], format="metadata").execute()
+                    m_headers = {h["name"].lower(): h["value"] for h in m_meta.get("payload", {}).get("headers", [])}
+                    m_subj = m_headers.get("subject", "").lower()
+
+                    if is_urgency_term and any(u in m_subj for u in ("importante", "urgente", "alerta", "aviso")):
+                        target_id = m["id"]
+                        break
+
+                    terms = [t for t in re.findall(r"[\w]+", clean_q) if len(t) > 2]
+                    if terms and any(t in m_subj for t in terms):
+                        target_id = m["id"]
+                        break
+            except Exception:
+                pass
+
+            # 2. Se não localizou nos não lidos, tenta busca direta por assunto
+            if not target_id:
+                res = service.users().messages().list(userId="me", q=f'subject:"{clean_q or subject_query}"', maxResults=1).execute()
+                msgs = res.get("messages", [])
+                if msgs:
+                    target_id = msgs[0]["id"]
+                else:
+                    # 3. Tenta busca global
+                    res_broad = service.users().messages().list(userId="me", q=clean_q or subject_query, maxResults=1).execute()
+                    msgs_broad = res_broad.get("messages", [])
+                    if msgs_broad:
+                        target_id = msgs_broad[0]["id"]
 
         if not target_id:
             return json.dumps({"success": False, "error": f"Nenhum email localizado para '{subject_query or email_id}'."}, ensure_ascii=False)

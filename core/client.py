@@ -26,7 +26,7 @@ def load_system_prompt() -> str:
     return Path("prompts/system.md").read_text(encoding="utf-8")
 
 
-def should_enable_tools(user_text: str) -> bool:
+def should_enable_tools(user_text: str, conversation_messages: list[dict] | None = None) -> bool:
     """
     Roteador rápido de intenção:
     Se a fala for apenas conversação casual, cumprimento ou alívio (ex: 'oi', 'bom dia', 'boa deu certo'),
@@ -39,18 +39,36 @@ def should_enable_tools(user_text: str) -> bool:
         r"\b(cria|crie|crio|criar|criando|criação)\b",
         r"\b(apaga|apague|apago|apagar|deleta|delete|deleto|deletar)\b",
         r"\b(remove|remova|removo|remover|exclui|exclua|excluo|excluir)\b",
-        r"\b(l[eê]|leia|ler|mostra|mostre|listar|lista)\b",
+        r"\b(l[eê]|leia|ler|lendo|leitura|mostra|mostre|listar|lista)\b",
         r"\b(pesquisa|pesquise|pesquisar|busca|busque|buscar|procura|procure)\b",
         r"\b(executa|execute|executar|roda|rode|rodar|rodou|rodando)\b",
         r"\b(arquivo|pasta|diret[oó]rio|vault|nota|script|processo|desktop|área de trabalho)\b",
         r"\b(tool|caulinho|ferramenta|comando)\b",
         r"\b(apontamento|evento|compromisso|reuni[aã]o|agenda|calend[aá]rio)\b",
         r"\b(drive|google drive|email|emails|e-mail|e-mails|gmail|inbox|mensagem|mensagens|pdf|doc)\b",
-        r"\b(conteúdo|conteudo|diz nele|tem nele|escrito nele|leia o|ler o)\b",
+        r"\b(conteúdo|conteudo|diz nele|tem nele|escrito nele|leia o|ler o|qual o assunto)\b",
+        r"\b(conseguiu|leu|verificou|abriu|checou|encontrou)\b",
+        r"\b(urgente|importante)\b",
         r"\b(tenta|tente|tentar|de novo|novamente)\b",
         r"\.txt\b|\.md\b|\.py\b|\.json\b|\.sh\b",
     ]
-    return any(re.search(p, texto) for p in ACTION_PATTERNS)
+    if any(re.search(p, texto) for p in ACTION_PATTERNS):
+        return True
+
+    # Se a conversa recente contiver ações ou referências a emails/arquivos/agenda,
+    # mantém ferramentas ativas para follow-ups curtos (ex: 'conseguiu?', 'o que tem nele?')
+    if conversation_messages:
+        recent_text = " ".join(
+            str(m.get("content", "")).lower() for m in conversation_messages[-4:]
+        )
+        has_recent_action_topic = any(
+            k in recent_text
+            for k in ("email", "e-mail", "gmail", "inbox", "arquivo", "pasta", "agenda", "evento", "apontamento")
+        )
+        if has_recent_action_topic:
+            return True
+
+    return False
 
 
 async def recuperar_contexto_memoria(pergunta: str, user_id: str | None = None) -> str:
@@ -346,7 +364,7 @@ async def chat(
             user_query = m.get("content", "")
             break
 
-    active_tools = ALL_TOOL_SCHEMAS if should_enable_tools(user_query) else None
+    active_tools = ALL_TOOL_SCHEMAS if should_enable_tools(user_query, payload_messages) else None
 
     # Se não houver ferramentas ativas, podemos fazer streaming imediato desde o início
     if active_tools is None:
@@ -382,10 +400,36 @@ async def chat(
 
         if not func_name or func_name not in AVAILABLE_TOOLS:
             conteudo = response_message.content or ""
-            # Guardrail anti-alucinação: se o modelo tentou responder texto puro fingindo sucesso ou prometendo ação
-            # sem ter executado ferramentas no turno atual:
-            claims_success = any(
-                w in conteudo.lower()
+            conteudo_lower = conteudo.lower()
+
+            # Guardrail anti-alucinação: se o modelo tentou responder texto puro fingindo sucesso,
+            # prometendo ação ou simulando conteúdo de email/arquivos sem ter executado ferramentas no turno:
+            is_promising_or_simulating = any(
+                p in conteudo_lower
+                for p in (
+                    "vou ler",
+                    "vou verificar",
+                    "vou checar",
+                    "vou abrir",
+                    "lendo email",
+                    "lendo e-mail",
+                    "lendo o email",
+                    "lendo o e-mail",
+                    "lendo o conteúdo",
+                    "sim, consegui",
+                    "consegui ler",
+                    "li o email",
+                    "li o e-mail",
+                    "vou criar",
+                    "vou apagar",
+                    "vou deletar",
+                    "vou tentar",
+                    "vou executar",
+                )
+            )
+
+            is_claiming_done = any(
+                w in conteudo_lower
                 for w in (
                     "criei",
                     "apaguei",
@@ -394,22 +438,44 @@ async def chat(
                     "criado",
                     "excluído",
                     "executei",
-                    "vou criar",
-                    "vou apagar",
-                    "vou deletar",
-                    "vou tentar",
-                    "não encontrado",
-                    "não localizei",
                 )
             )
 
-            if claims_success and (not executed_tools_collector or len(executed_tools_collector) == 0):
-                payload_messages.append(
-                    {
-                        "role": "user",
-                        "content": "[Diretiva do Sistema]: Nenhuma ferramenta foi executada. É expressamente proibido responder em texto afirmando ou prometendo que realizou a ação sem chamar a ferramenta no sistema. Execute a ferramenta correspondente agora ('create_file', 'delete_file', 'execute_command', 'list_files').",
-                    }
+            is_hallucinating_email = (
+                any(header in conteudo_lower for header in ("assunto:", "subject:", "de: ", "para: "))
+                or any(greeting in conteudo_lower for greeting in ("caro natanael", "olá natanael", "fim do e-mail"))
+                or "atenciosamente" in conteudo_lower
+            ) and any(k in user_query.lower() for k in ("email", "e-mail", "mensagem", "inbox", "urgente", "importante", "nele", "escrito", "ler"))
+
+            is_asking_to_read_email = (
+                any(k in user_query.lower() for k in ("email", "e-mail", "inbox"))
+                and any(k in user_query.lower() for k in ("ler", "leia", "conteúdo", "conteudo", "escrito", "tem nele", "o que tem", "qual o", "abrir"))
+            ) or any(
+                p in user_query.lower()
+                for p in ("o que tem nele", "o que tem nela", "o que está escrito", "o que esta escrito", "qual o conteúdo", "qual o conteudo")
+            )
+
+            should_intercept = (is_promising_or_simulating or is_claiming_done or is_hallucinating_email or is_asking_to_read_email) and (
+                not executed_tools_collector or len(executed_tools_collector) == 0
+            )
+
+            if should_intercept:
+                is_email_context = any(
+                    k in (user_query.lower() + " " + conteudo_lower)
+                    for k in ("email", "e-mail", "inbox", "gmail", "ler", "escrito", "nele", "conteúdo", "conteudo", "urgente", "importante")
                 )
+                if is_email_context:
+                    directive = (
+                        "[Diretiva do Sistema]: Nenhuma ferramenta foi executada! É expressamente proibido responder em texto prometendo ler, dizendo 'Sim, consegui' ou inventando o conteúdo de emails. "
+                        "Você DEVE chamar a ferramenta read_email_body(subject_query=...) AGORA no sistema para obter o conteúdo real."
+                    )
+                else:
+                    directive = (
+                        "[Diretiva do Sistema]: Nenhuma ferramenta foi executada no sistema! É expressamente proibido responder em texto afirmando ou prometendo que realizou a ação sem chamar a ferramenta. "
+                        "Execute a ferramenta correspondente agora no computador ('create_file', 'delete_file', 'create_calendar_event', 'delete_calendar_event', 'execute_command', 'list_files', 'read_email_body')."
+                    )
+
+                payload_messages.append({"role": "user", "content": directive})
                 continue
 
             # Resposta direta em texto (limpa qualquer tag interna residual que tenha vazado)
