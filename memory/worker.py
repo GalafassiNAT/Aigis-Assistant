@@ -3,6 +3,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 # Garante path da raiz
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -14,8 +15,11 @@ if sys.platform == "win32":
         pass
 
 from dotenv import load_dotenv
+from loguru import logger
 from openai import AsyncOpenAI
 
+from core.persona import PersonaManager
+from memory.dataset_curator import DatasetCurator
 from memory.embeddings import get_embedding
 from memory.storage import MemoryStorage
 
@@ -23,38 +27,51 @@ load_dotenv()
 
 LLAMA_SERVER_URL = os.getenv("LLAMA_SERVER_URL", "http://localhost:8080/v1")
 MODEL_ALIAS = os.getenv("LLAMA_MODEL_ALIAS", "qwen-coder")
-OWNER_DISCORD_ID = os.getenv("DISCORD_OWNER_ID", "").strip()
 
 client = AsyncOpenAI(base_url=LLAMA_SERVER_URL, api_key="no_need")
 storage = MemoryStorage()
+persona_mgr = PersonaManager.get_instance()
+curator = DatasetCurator.get_instance()
 
-EXTRACTION_SYSTEM_PROMPT = """Você é um extrator de conhecimento e memória para uma IA assistente técnica.
-Sua função é analisar uma conversa recente entre o Usuário e a IA e extrair fatos duradouros, preferências ou correções.
+COGNITIVE_EXTRACTION_PROMPT = """Você é o motor cognitivo e de auto-reflexão da Aigis (IA assistente pessoal de Natanael).
+Sua função é analisar os diálogos recentes entre Natanael (ou outros usuários) e a Aigis e extrair conhecimento multidimensional para a evolução da assistente.
 
-Regra Fundamental:
-- Você deve extrair EXCLUSIVAMENTE o que o USUÁRIO declarou, ensinou ou corrigiu como verdade.
-- NUNCA extraia alucinações, palpites incorretos ou erros que o Assistente disse e que o usuário contestou ou corrigiu em seguida.
-- Se o usuário disser "Não, isso está errado", "não é bem isso", ou "sai um por semana", DESCARTE completamente a afirmação anterior do Assistente e considere apenas o que o Usuário instruiu.
+Você deve extrair 5 dimensões em um único JSON estruturado:
 
-Diretrizes:
-1. Extraia APENAS fatos novos ensinados pelo usuário, decisões de projeto ou correções explícitas feitas pelo usuário.
-2. NUNCA extraia saudações ("olá", "como vai"), mensagens triviais ou especulações.
-3. Para cada fato válido ensinado pelo usuário, gere um objeto com:
-   - "subject": Sujeito (ex: 'RLOS', 'Aigis', 'Natanael')
-   - "predicate": Verbo/Relação em minúsculas (ex: 'é', 'desenvolve', 'usa', 'formato')
-   - "object": O valor, especificação ou descrição concisa informada pelo usuário.
-   - "is_correction": true se for uma correção explícita feita pelo usuário sobre um erro anterior, false caso contrário.
+1. "facts": Fatos objetivos duradouros (ex: projetos, ferramentas, fatos técnicos).
+   - "subject", "predicate", "object", "is_correction" (true se corrigiu um erro anterior).
+2. "profile_traits": Hábitos, preferências subjetivas, ritmo biológico, opiniões ou dinâmica social do usuário.
+   - "category": 'habito', 'preferencia', 'estilo_pensamento', 'estado_emocional', 'relacao_social', 'meta_pessoal'.
+   - "attribute": Identificador conciso (ex: 'rotina_estudos', 'tom_preferido', 'sono').
+   - "description": Descrição natural do comportamento ou preferência observada.
+   - "confidence": Float de 0.5 a 1.0.
+3. "episode": Se o diálogo formou uma sessão coerente, resolução de problema ou marco importante, gere um resumo episódico. Caso contrário, null.
+   - "title": Título curto (ex: 'Configuração da rotina e ajuste de emails').
+   - "summary": Resumo conciso do que viveram juntos.
+   - "emotional_tone": 'produtivo', 'tranquilo', 'desafiador', 'divertido'.
+   - "key_topics": Lista de palavras-chave.
+4. "dpo_correction": Se o usuário deu uma bronca ou corrigiu explicitamente uma falha/alucinação da Aigis, capture o par para alinhamento. Caso contrário, null.
+   - "prompt": O que o usuário havia pedido antes do erro.
+   - "chosen": O comportamento ou resposta correta esperada.
+   - "rejected": O erro cometido pela Aigis que foi contestado.
+   - "reason": Por que a resposta anterior estava errada.
+5. "persona_learning": Uma diretriz prática aprendida para aprimorar o comportamento da Aigis no futuro. Se não houver, null.
 
 Responda ESTRITAMENTE em formato JSON:
-{"facts": [{"subject": "...", "predicate": "...", "object": "...", "is_correction": false}]}
-Se não houver nenhum fato duradouro na conversa, retorne: {"facts": []}
+{
+  "facts": [],
+  "profile_traits": [],
+  "episode": null,
+  "dpo_correction": null,
+  "persona_learning": null
+}
 """
 
 
 def _get_worker_state() -> int:
     with storage._get_connection() as conn, conn.cursor() as cur:
         cur.execute(
-            "SELECT last_processed_log_id FROM memory_worker_state WHERE id = 'chat_logs_extractor';"
+            "SELECT last_processed_id FROM memory_worker_state WHERE id = 'timeline_cognitive_worker';"
         )
         row = cur.fetchone()
         return row[0] if row else 0
@@ -63,18 +80,24 @@ def _get_worker_state() -> int:
 def _update_worker_state(last_id: int):
     with storage._get_connection() as conn, conn.cursor() as cur:
         cur.execute(
-            "UPDATE memory_worker_state SET last_processed_log_id = %s, updated_at = CURRENT_TIMESTAMP WHERE id = 'chat_logs_extractor';",
+            """
+            INSERT INTO memory_worker_state (id, last_processed_id, updated_at)
+            VALUES ('timeline_cognitive_worker', %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (id) DO UPDATE SET
+                last_processed_id = EXCLUDED.last_processed_id,
+                updated_at = CURRENT_TIMESTAMP;
+            """,
             (last_id,),
         )
         conn.commit()
 
 
-def _get_unprocessed_logs(last_id: int, limit: int = 15) -> list[dict]:
+def _get_unprocessed_timeline(last_id: int, limit: int = 15) -> list[dict[str, Any]]:
     with storage._get_connection() as conn, conn.cursor() as cur:
         cur.execute(
             """
-            SELECT id, channel_name, author_id, author_name, content, is_bot, created_at
-            FROM chat_logs
+            SELECT id, source, author, content, metadata, created_at
+            FROM shared_timeline
             WHERE id > %s
             ORDER BY id ASC
             LIMIT %s;
@@ -85,132 +108,159 @@ def _get_unprocessed_logs(last_id: int, limit: int = 15) -> list[dict]:
         return [
             {
                 "id": r[0],
-                "channel_name": r[1],
-                "author_id": r[2],
-                "author_name": r[3],
-                "content": r[4],
-                "is_bot": r[5],
-                "created_at": r[6],
+                "source": r[1],
+                "author": r[2],
+                "content": r[3],
+                "metadata": r[4] if isinstance(r[4], dict) else json.loads(r[4] or "{}"),
+                "created_at": r[5],
             }
             for r in rows
         ]
 
 
-async def extract_facts_from_messages(dialogue_text: str) -> list[dict]:
-    """Usa o Qwen local para extrair tripletos atômicos estruturados da conversa."""
+async def extract_cognitive_insights(dialogue_text: str) -> dict[str, Any]:
+    """Chama o LLM local para extrair perfil, fatos, episódios e alinhamentos."""
     try:
         resp = await client.chat.completions.create(
             model=MODEL_ALIAS,
             messages=[
-                {"role": "system", "content": EXTRACTION_SYSTEM_PROMPT},
+                {"role": "system", "content": COGNITIVE_EXTRACTION_PROMPT},
                 {
                     "role": "user",
-                    "content": f"Analise a seguinte conversa recente:\n\n{dialogue_text}",
+                    "content": f"Analise o seguinte trecho da linha do tempo recente:\n\n{dialogue_text}",
                 },
             ],
             temperature=0.1,
-            max_tokens=500,
+            max_tokens=800,
         )
         content = resp.choices[0].message.content or ""
-        # Extrai bloco JSON
         brace_start = content.find("{")
         brace_end = content.rfind("}")
         if brace_start != -1 and brace_end > brace_start:
-            dados = json.loads(content[brace_start : brace_end + 1])
-            return dados.get("facts", [])
+            return json.loads(content[brace_start : brace_end + 1])
     except Exception as e:
-        print(f"Erro na extração de fatos via LLM: {e}")
-    return []
+        logger.warning(f"[CognitiveWorker] Erro na extração via LLM: {e}")
+    return {}
 
 
-def consolidate_fact(fact: dict, target_user_id: str):
-    """
-    Grava fato no Grafo e na busca vetorial.
-    Se for uma correção, remove ou sobrescreve versões conflitantes anteriores.
-    """
-    subj = fact.get("subject", "").strip()
-    pred = fact.get("predicate", "").strip()
-    obj = fact.get("object", "").strip()
-    is_corr = bool(fact.get("is_correction", False))
-
-    if not subj or not pred or not obj:
-        return
-
-    with storage._get_connection() as conn, conn.cursor() as cur:
-        # 1. Se for correção, apaga tripletos anteriores do mesmo subject e predicate
-        if is_corr:
-            cur.execute(
-                """
-                DELETE FROM knowledge_triplets
-                WHERE user_id = %s AND subject ILIKE %s AND predicate ILIKE %s;
-                """,
-                (target_user_id, subj, pred),
-            )
-
-        # 2. Insere no Grafo
-        cur.execute(
-            """
-            INSERT INTO knowledge_triplets (subject, predicate, object, user_id)
-            VALUES (%s, %s, %s, %s);
-            """,
-            (subj, pred, obj, target_user_id),
-        )
-        conn.commit()
-
-    # 3. Gera embedding e insere em memories
-    frase = f"{subj} {pred} {obj}"
-    vec = get_embedding(frase)
-    storage._sync_add_memory(
-        content=frase,
-        embedding=vec,
-        metadata={"source": "autonomous_consolidation", "is_correction": is_corr},
-        user_id=target_user_id,
-    )
-    print(
-        f"🧠 [Consolidação] Gravado: [{subj}] -> [{pred}] -> [{obj}] (user={target_user_id}, correcao={is_corr})"
-    )
-
-
-async def run_consolidation_cycle():
-    """Executa um ciclo único de consolidação de memórias acumuladas."""
+async def process_timeline_batch():
+    """Executa um ciclo de processamento da linha do tempo compartilhada."""
     last_id = _get_worker_state()
-    logs = _get_unprocessed_logs(last_id, limit=20)
+    events = _get_unprocessed_timeline(last_id, limit=12)
 
-    if not logs:
+    if not events:
         return 0
 
-    print(f"🔍 [Worker] Processando {len(logs)} mensagens a partir do log #{last_id + 1}...")
+    logger.info(f"[CognitiveWorker] Processando {len(events)} eventos a partir do id #{last_id + 1}...")
 
-    # Monta texto do diálogo
-    dialogo_linhas = []
-    has_owner_msg = False
-    for log_item in logs:
-        papel = "Assistente" if log_item["is_bot"] else f"Usuário ({log_item['author_name']})"
-        dialogo_linhas.append(f"{papel}: {log_item['content']}")
-        if log_item["author_id"] == OWNER_DISCORD_ID:
-            has_owner_msg = True
+    dialogue_lines = []
+    messages_for_sft = []
 
-    dialogo_str = "\n".join(dialogo_linhas)
-    target_user_id = "local:owner" if has_owner_msg else f"discord:{logs[0]['author_id']}"
+    for ev in events:
+        author = ev["author"]
+        content = ev["content"]
+        is_assistant = author.lower() in ("aigis", "assistant")
+        role = "assistant" if is_assistant else "user"
 
-    fatos = await extract_facts_from_messages(dialogo_str)
-    for f in fatos:
-        consolidate_fact(f, target_user_id)
+        dialogue_lines.append(f"{author}: {content}")
+        messages_for_sft.append({"role": role, "content": content})
 
-    max_id = max(log_item["id"] for log_item in logs)
+    dialogue_str = "\n".join(dialogue_lines)
+    insights = await extract_cognitive_insights(dialogue_str)
+
+    target_user_id = "local:owner"
+
+    # 1. Consolida fatos no Grafo e vetores
+    facts = insights.get("facts", [])
+    for f in facts:
+        subj = f.get("subject", "").strip()
+        pred = f.get("predicate", "").strip()
+        obj = f.get("object", "").strip()
+        is_corr = bool(f.get("is_correction", False))
+
+        if subj and pred and obj:
+            if is_corr:
+                with storage._get_connection() as conn, conn.cursor() as cur:
+                    cur.execute(
+                        "DELETE FROM knowledge_triplets WHERE user_id = %s AND subject ILIKE %s AND predicate ILIKE %s;",
+                        (target_user_id, subj, pred),
+                    )
+                    conn.commit()
+
+            await storage.add_triplet(subj, pred, obj, user_id=target_user_id)
+            phrase = f"{subj} {pred} {obj}"
+            vec = get_embedding(phrase)
+            await storage.add_memory(
+                content=phrase,
+                embedding=vec,
+                metadata={"source": "cognitive_worker", "is_correction": is_corr},
+                user_id=target_user_id,
+            )
+            logger.info(f"🧠 [Fato Consolidado]: {subj} -> {pred} -> {obj}")
+
+    # 2. Consolida perfil psicológico, hábitos e preferências
+    traits = insights.get("profile_traits", [])
+    for t in traits:
+        cat = t.get("category", "habito")
+        attr = t.get("attribute", "")
+        desc = t.get("description", "")
+        conf = float(t.get("confidence", 1.0))
+        if attr and desc:
+            await storage.upsert_user_profile(
+                category=cat,
+                attribute=attr,
+                description=desc,
+                confidence=conf,
+                user_id=target_user_id,
+            )
+            logger.info(f"👤 [Perfil Absorvido] ({cat}): {attr} -> {desc}")
+
+    # 3. Consolida memória episódica autobiográfica
+    ep = insights.get("episode")
+    if ep and isinstance(ep, dict) and ep.get("title") and ep.get("summary"):
+        await storage.add_episodic_memory(
+            title=ep["title"],
+            summary=ep["summary"],
+            emotional_tone=ep.get("emotional_tone", "neutro"),
+            key_topics=ep.get("key_topics", []),
+            user_id=target_user_id,
+        )
+        logger.info(f"📖 [Episódio Autobiográfico]: '{ep['title']}'")
+
+    # 4. Registra correções DPO se houver
+    dpo = insights.get("dpo_correction")
+    if dpo and isinstance(dpo, dict) and dpo.get("prompt") and dpo.get("chosen") and dpo.get("rejected"):
+        curator.record_dpo_pair(
+            prompt=dpo["prompt"],
+            chosen=dpo["chosen"],
+            rejected=dpo["rejected"],
+            reason=dpo.get("reason", "Correção explícita de usuário"),
+        )
+
+    # 5. Evolui o estado de persona se houve aprendizado comportamental
+    persona_learning = insights.get("persona_learning")
+    if persona_learning and isinstance(persona_learning, str) and len(persona_learning) > 10:
+        persona_mgr.add_learned_trait(persona_learning)
+        logger.info(f"✨ [Evolução de Persona]: {persona_learning}")
+
+    # 6. Salva diálogo no dataset SFT se for construtivo e sem correções
+    if not dpo and len(messages_for_sft) >= 2:
+        curator.record_sft_dialogue(messages_for_sft, metadata={"source": "shared_timeline"})
+
+    max_id = max(ev["id"] for ev in events)
     _update_worker_state(max_id)
-    print(f"✅ [Worker] Ciclo concluído até log #{max_id}. {len(fatos)} fatos consolidados.")
-    return len(fatos)
+    logger.info(f"✅ [CognitiveWorker] Lote finalizado até id #{max_id}.")
+    return len(events)
 
 
 async def main_loop(poll_interval: int = 30):
     """Loop contínuo de background rodando a cada poll_interval segundos."""
-    print(f"🚀 Background Memory Worker iniciado (intervalo: {poll_interval}s)")
+    logger.info(f"🚀 Cognitive Reflection Worker iniciado (intervalo: {poll_interval}s)")
     while True:
         try:
-            await run_consolidation_cycle()
+            await process_timeline_batch()
         except Exception as e:
-            print(f"⚠️ Erro no loop de consolidação: {e}")
+            logger.error(f"[CognitiveWorker] Erro no ciclo de reflexão: {e}")
         await asyncio.sleep(poll_interval)
 
 

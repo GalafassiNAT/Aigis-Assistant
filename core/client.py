@@ -132,6 +132,56 @@ async def recuperar_contexto_memoria(pergunta: str, user_id: str | None = None) 
     return ""
 
 
+async def obter_contexto_cognitivo_completo(pergunta: str, user_id: str | None = None) -> str:
+    """
+    Injeta a consciência autobiográfica, perfil do usuário e estado de personalidade
+    em todas as conversas substantivas para garantir presença humanizada e co-piloto ativo.
+    """
+    from core.context import get_local_user
+    from core.persona import PersonaManager
+    from memory.embeddings import get_embedding
+    from memory.storage import MemoryStorage
+
+    storage = MemoryStorage()
+    persona_mgr = PersonaManager.get_instance()
+    uid = user_id or get_local_user().user_id
+
+    blocos = []
+
+    # 1. Bloco vivo da Persona da Aigis (Humor, cumplicidade, diretrizes aprendidas)
+    try:
+        persona_block = persona_mgr.get_persona_prompt_block()
+        if persona_block:
+            blocos.append(persona_block)
+    except Exception:
+        pass
+
+    # 2. Perfil Ativo do Usuário (Hábitos, preferências, ritmo)
+    try:
+        traits = await storage.get_user_profile(user_id=uid)
+        if traits:
+            linhas_perfil = [f"- [{t.category.capitalize()}] {t.attribute}: {t.description}" for t in traits[:6]]
+            blocos.append("[Perfil e Hábitos do Usuário]:\n" + "\n".join(linhas_perfil))
+    except Exception:
+        pass
+
+    # 3. Memórias Episódicas Recentes (História compartilhada recente)
+    try:
+        episodes = await storage.get_recent_episodes(limit=2, user_id=uid)
+        if episodes:
+            linhas_ep = [f"- {e.occurred_on or 'Recente'}: {e.title} — {e.summary}" for e in episodes]
+            blocos.append("[História Compartilhada / Episódios Recentes]:\n" + "\n".join(linhas_ep))
+    except Exception:
+        pass
+
+    # 4. Fatos específicos do Grafo ou busca semântica
+    ctx_memoria = await recuperar_contexto_memoria(pergunta, user_id=uid)
+    if ctx_memoria:
+        blocos.append(ctx_memoria)
+
+    return "\n\n".join(blocos)
+
+
 def extrair_tool_call(message) -> tuple[str | None, dict | None, str | None]:
     """
     Extrai chamadas de ferramenta suportando:
@@ -280,11 +330,11 @@ async def chat(
     # no final da mensagem do usuário atual (posição dinâmica).
     if payload_messages and payload_messages[-1].get("role") == "user":
         pergunta = payload_messages[-1].get("content") or ""
-        contexto_memoria = await recuperar_contexto_memoria(pergunta, user_id=user_id)
+        contexto_cognitivo = await obter_contexto_cognitivo_completo(pergunta, user_id=user_id)
 
         temporal_info = f"[Relógio do Sistema: {now_str}]"
-        if contexto_memoria:
-            temporal_info += f"\n[Memória Recuperada:\n{contexto_memoria}]"
+        if contexto_cognitivo:
+            temporal_info += f"\n\n{contexto_cognitivo}"
 
         # Injeta briefing proativo da rotina/agenda se a pergunta for sobre tarefas, provas ou rotina
         if any(

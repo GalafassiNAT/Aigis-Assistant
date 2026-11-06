@@ -47,9 +47,14 @@ In a dedicated terminal, launch `llama-server` pointing to the Qwen2.5 model:
 
 ### Step 4: Launch Aigis Interfaces
 
-- **To start the Discord Bot (Channel Hub + Proactive Daemons):**
+- **To start the Discord Bot (Channel Hub, Proactive Daemons & Cognitive Reflection):**
   ```bash
   python interfaces/discord_bot.py
+  ```
+  *(The Bot automatically spawns background daemons for agenda reminders, Gmail triage, sleep/habit initiatives, and 60-second continuous timeline reflection).*
+- **To run cognitive reflection manually in batch mode (optional):**
+  ```bash
+  python memory/worker.py
   ```
 - **To start the PC Voice Assistant (Microphone + Speaker Loop):**
   ```bash
@@ -99,3 +104,13 @@ python -m ruff check core interfaces memory tools
 # Format code
 python -m ruff format core interfaces memory tools
 ```
+
+---
+
+## 5. Continuous Dataset Curation & Living Persona State
+
+Aigis continuously extracts training data and evolves its emotional state through organic usage:
+- **Dynamic Persona State (`data/persona_state.json`):** Tracks mood, affinity score, and learned insider vocabulary.
+- **SFT Dataset (`data/training/aigis_sft.jsonl`):** Multi-turn conversational sessions automatically captured for Supervised Fine-Tuning.
+- **DPO Dataset (`data/training/aigis_dpo.jsonl`):** Preference pairs (`chosen`/`rejected`) captured whenever the user corrects or critiques an assistant turn.
+- For fine-tuning execution details, refer to the [LoRA Fine-Tuning Plan](LORA_FINETUNING_PLAN_EN.md).

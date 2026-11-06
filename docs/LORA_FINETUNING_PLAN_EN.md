@@ -21,27 +21,30 @@ Fine-tuning will be performed using **LoRA** on the frozen base model, adjusting
 
 ---
 
-## 3. Dataset Composition (*Dataset Blending*)
+## 3. Dataset Composition (*Dataset Blending*) & Continuous Curation
 
-The training corpus will combine three distinct layers:
+The training corpus combines domain synthetic data with **continuous real-time autonomous curation** managed by `memory/dataset_curator.py` and `memory/worker.py`:
 
-| Layer | Source | Estimated Count | Primary Goal |
+| Layer | Source | Format / Target | Primary Goal |
 | :--- | :--- | :--- | :--- |
-| **1. PT-BR Conversational Fluency** | `Canarim-Instruct-PTBR` / `Pt-Corpus-Instruct` (Hugging Face) | ~500–800 turns | Natural Brazilian Portuguese phrasing and short dialogue turns |
-| **2. Social Dynamics & Roleplay** | `agentlans/combined-roleplay` / Curated samples | ~200–300 turns | Proportional responses to compliments, feedback, and relief |
-| **3. Aigis Persona & Tool Calling** | Domain Synthetic Generator (`training/generate_aigis_data.py`) | ~250–400 turns | Creator identity with Natanael, Windows PowerShell tool use, concise voice cues |
+| **1. Successful Real Dialogues (SFT)** | `memory/dataset_curator.py` | `data/training/aigis_sft.jsonl` | Real timeline interactions between Natanael and Aigis that completed naturally and factually |
+| **2. Preference & Correction Pairs (DPO)** | `memory/worker.py` | `data/training/aigis_dpo.jsonl` | Automatic `{prompt, chosen, rejected}` pairs captured whenever Natanael corrects Aigis' mistakes or tone |
+| **3. PT-BR Conversational Fluency** | `Canarim-Instruct-PTBR` / Hugging Face | External / Base corpus | Informal Brazilian Portuguese prosody and natural phrasings |
+| **4. Aigis Persona & Tool Calling** | Domain Synthetic Generator (`training/generate_aigis_data.py`) | `data/training/synthetic_aigis.jsonl` | Foundational identity, tools, and voice feedback cues |
 
 ---
 
-## 4. Execution Pipeline
+## 4. Continuous Training Pipeline
 
 ```mermaid
 flowchart LR
-    HF[Hugging Face Datasets] --> Filter[PT-BR Filter Script]
-    Syn[Aigis Synthetic Generator] --> Blend[Merge into aigis_dataset.jsonl]
-    Filter --> Blend
-    Blend --> Colab[Google Colab: Unsloth / T4 GPU]
-    Colab --> LoRA[Trained LoRA Weights]
+    TL[shared_timeline / Real Interactions] --> CW[Cognitive Worker & Curator]
+    CW --> SFT[data/training/aigis_sft.jsonl]
+    CW --> DPO[data/training/aigis_dpo.jsonl]
+    SFT --> Blend[Dataset Blending]
+    DPO --> Blend
+    Blend --> Colab[Google Colab: Unsloth / T4/A100 GPU]
+    Colab --> LoRA[Trained LoRA / DPO Weights]
     LoRA --> Merge[Merge GGUF: aigis-7b-q4_k_m.gguf]
     Merge --> LlamaServer[Local llama-server Deployment]
 ```

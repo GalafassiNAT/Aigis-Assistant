@@ -181,19 +181,40 @@ async def on_ready():
                 ping_owner=payload.get("ping_owner", False),
             )
 
+        elif ev_type == "initiative_message":
+            target_channel = payload.get("channel", "aigis-feed")
+            content = payload.get("content", "")
+            chan = channels.get(target_channel) or channels.get(DEDICATED_CHANNEL_NAME)
+            if chan and content:
+                await chan.send(content)
+
     await bus.subscribe(CH_PROACTIVE_ALERTS, _handle_proactive_event)
 
-    # 4. Worker contínuo de checagem de lembretes e emails (roda a cada 60s em background)
+    # 4. Worker contínuo de checagem de lembretes, emails e iniciativas (roda a cada 60s em background)
     async def _reminder_daemon():
         while True:
             try:
                 await proactive_hub.check_upcoming_reminders_and_ping()
                 await proactive_hub.check_new_emails_and_notify()
+                await proactive_hub.check_autonomous_initiative()
             except Exception as e:
-                logger.debug(f"[DiscordDaemon] Erro ao checar lembretes/emails: {e}")
+                logger.debug(f"[DiscordDaemon] Erro ao checar lembretes/emails/iniciativas: {e}")
             await asyncio.sleep(60)
 
     asyncio.create_task(_reminder_daemon())
+
+    # 5. Worker cognitivo contínuo de reflexão e curadoria de datasets (a cada 60s)
+    from memory.worker import process_timeline_batch
+
+    async def _cognitive_daemon():
+        while True:
+            await asyncio.sleep(60)
+            try:
+                await process_timeline_batch()
+            except Exception as e:
+                logger.debug(f"[CognitiveDaemon] Erro no processamento cognitivo: {e}")
+
+    asyncio.create_task(_cognitive_daemon())
 
 
 @client.event

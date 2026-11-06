@@ -464,6 +464,78 @@ class ProactiveLifeHub:
         except Exception as e:
             logger.debug(f"[ProactiveHub] Erro na checagem de lembretes: {e}")
 
+    async def check_autonomous_initiative(self):
+        """
+        Gatilho de iniciativa autônoma e humanizada da Aigis:
+        - Check de sono/saúde nas madrugadas (avisa de forma parceira se passar das 23h30 com rotina cedo no dia seguinte).
+        - Acompanhamento pós-hábito (Mandarim às 08h, LeetCode às 21h).
+        """
+        try:
+            now = datetime.now()
+            today_str = now.strftime("%Y-%m-%d")
+
+            # 1. Guardiã do Sono e Saúde (entre 23h30 e 04h00 em dias de semana)
+            is_late_night = (now.hour == 23 and now.minute >= 30) or (0 <= now.hour < 4)
+            if is_late_night and now.weekday() < 5:
+                sleep_key = f"initiative:sleep_check_{today_str}"
+                already_warned = await self.bus.get_state(sleep_key)
+                if not already_warned:
+                    events = await self.fetch_google_calendar_events(max_results=3)
+                    has_early_event = any(
+                        "08:00" in str(ev.get("date", "")) or "mandarim" in str(ev.get("title", "")).lower()
+                        for ev in events
+                    )
+
+                    msg = (
+                        "🌙 Mestre, já passa das 23h30 e você tem compromisso cedo amanhã (Mandarim às 08h)! "
+                        "Não acha melhor encerrar o código por hoje e descansar um pouco?"
+                        if has_early_event
+                        else "🌙 Já passa das 23h30! Lembre-se de não virar a noite direto no código, mestre. O descanso também faz parte do rendimento."
+                    )
+
+                    payload = {
+                        "type": "initiative_message",
+                        "channel": "aigis-feed",
+                        "content": msg,
+                        "ping_owner": False,
+                    }
+                    await self.bus.publish(CH_PROACTIVE_ALERTS, payload)
+                    await self.bus.set_state(sleep_key, True, expire_seconds=28800)
+                    logger.info("[ProactiveHub] Iniciativa autônoma: check de sono/saúde disparado.")
+
+            # 2. Acompanhamento Pós-Hábito (Follow-up de Mandarim às 08h45 - 09h15)
+            if now.weekday() < 5 and (now.hour == 8 and now.minute >= 45 or now.hour == 9 and now.minute <= 15):
+                mandarim_key = f"initiative:mandarim_check_{today_str}"
+                already_asked = await self.bus.get_state(mandarim_key)
+                if not already_asked:
+                    payload = {
+                        "type": "initiative_message",
+                        "channel": "aigis-agenda",
+                        "content": "✨ O horário do estudo de Mandarim das 08:00 encerrou! Conseguiu praticar hoje, mestre, ou quer revisar algo mais tarde?",
+                        "ping_owner": False,
+                    }
+                    await self.bus.publish(CH_PROACTIVE_ALERTS, payload)
+                    await self.bus.set_state(mandarim_key, True, expire_seconds=43200)
+                    logger.info("[ProactiveHub] Iniciativa autônoma: follow-up de Mandarim disparado.")
+
+            # 3. Acompanhamento Pós-Hábito (Follow-up de LeetCode às 21h50 - 22h15)
+            if (now.hour == 21 and now.minute >= 50) or (now.hour == 22 and now.minute <= 15):
+                leetcode_key = f"initiative:leetcode_check_{today_str}"
+                already_asked = await self.bus.get_state(leetcode_key)
+                if not already_asked:
+                    payload = {
+                        "type": "initiative_message",
+                        "channel": "aigis-agenda",
+                        "content": "💡 Fechando o bloco de Exercício LeetCode! Como foi o problema de hoje? Travou em alguma estrutura de dados ou foi tranquilo?",
+                        "ping_owner": False,
+                    }
+                    await self.bus.publish(CH_PROACTIVE_ALERTS, payload)
+                    await self.bus.set_state(leetcode_key, True, expire_seconds=43200)
+                    logger.info("[ProactiveHub] Iniciativa autônoma: follow-up de LeetCode disparado.")
+
+        except Exception as e:
+            logger.debug(f"[ProactiveHub] Erro na iniciativa autônoma: {e}")
+
     async def sync_agenda_to_discord(self, discord_hub: Any):
         """Varre itens pendentes e publica novos eventos em #aigis-agenda."""
         briefing = self.get_upcoming_briefing()

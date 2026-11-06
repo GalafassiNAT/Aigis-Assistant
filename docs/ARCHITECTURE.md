@@ -31,18 +31,24 @@ flowchart TD
 
     subgraph Cognicao ["4. Cérebro & Raciocínio"]
         Ctx --> LLM[llama-server: Qwen2.5-7B-Instruct]
+        Persona[(Estado da Persona: data/persona_state.json)] <--> Ctx
         LLM --> Tools[Motor de Execução de Ferramentas]
         Tools --> PS[PowerShell / Bash Runners]
         Tools --> FS[Filesystem & Web Tools]
         Tools --> GSuite[Google Workspace: Calendar, Gmail, Drive]
     end
 
-    subgraph Memoria ["5. Memória Permanente"]
-        LLM -. Gravação em Background .-> MW[Worker de Consolidação]
+    subgraph Memoria ["5. Memória Permanente & Reflexão"]
+        LLM -. Background Daemon (60s) .-> MW[Worker de Reflexão Cognitiva]
         MW --> KG[(Grafo de Conhecimento: Tripletos)]
         MW --> VEC[(pgvector: Embeddings FastEmbed)]
-        KG -. Recuperação < 5ms .-> Ctx
+        MW --> EP[(Memória Autobiográfica: user_profiles & episodic_memories)]
+        MW --> DC[Curador de Datasets: SFT / DPO]
+        DC --> DTR[(data/training: SFT & DPO jsonl)]
+        MW -. Evolui .-> Persona
+        KG -. < 5ms Retrieval .-> Ctx
         VEC -. Similaridade Semântica .-> Ctx
+        EP -. Perfil & Episódios .-> Ctx
     end
 
     subgraph Voz ["6. Síntese Vocal Ultrarrápida"]
@@ -61,6 +67,8 @@ flowchart TD
 - **Modo de Operação:** ReAct (Reasoning + Acting) via OpenAPI Tools nativo e fallback de extração sintática.
 - **Roteador Context-Aware (`should_enable_tools`):** Analisa a mensagem atual e turnos recentes da conversa para manter ferramentas ativas em follow-ups naturais (*"conseguiu?"*, *"o que tem nele?"*, *"apague ele"*).
 - **Interceptor Anti-Alucinação Ativo:** Impede respostas em texto fingindo ações ou simulando conteúdo de e-mails/arquivos sem chamada de ferramenta correspondente (`verified: true` ou `success: true`), forçando inline a execução de `read_email_body`, `create_calendar_event` ou operadores de sistema.
+- **Injeção Cognitiva Dinâmica Preservando KV Cache:** O system prompt (`prompts/system.md`) permanece 100% estático para reutilização integral de prefix KV cache no `llama-server`. Informações contextuais dinâmicas (humor da persona, perfil sociopsicológico do usuário, memórias episódicas recentes e memórias semânticas) são injetadas exclusivamente no encerramento da última mensagem de usuário (`obter_contexto_cognitivo_completo()`).
+- **Modo Parceira Cognitiva & Co-piloto:** Configuração diretiva no prompt de sistema instruindo a Aigis a atuar como colaboradora intelectual ativa — desafiando ideias construtivamente, propondo alternativas de arquitetura e demonstrando raciocínio compartilhado.
 - **Hook de Feedback Imediato (`on_tool_start`):** Notifica vocalmente o usuário antes do início de comandos lentos (ex: *"Criando o arquivo..."*, *"Lendo e-mail..."*), reduzindo a latência percebida para <50ms.
 
 ### 2.2. Interfaces (`interfaces/`)
@@ -92,10 +100,40 @@ flowchart TD
 - **Manipulação Verificada de Arquivos (`create_file`, `delete_file`):** Criação e exclusão atômica com validação física no disco (`Path.exists()`) e retorno estruturado (`verified: true`).
 - **Sessão Persistente PowerShell (Windows) & Bash (Linux):** Execução isolada com timeout configurável e truncamento inteligente de saída.
 
-### 2.6. Memória Permanente (`memory/`)
-- **Grafo de Conhecimento:** Tripletos relacionais (`sujeito -> predicado -> objeto`) no PostgreSQL para fatos atômicos invariantes.
-- **Busca Vetorial:** `pgvector` com embeddings gerados via FastEmbed local em CPU/ONNX.
-- **Worker Autônomo (`memory/worker.py`):** Processo em background que analisa a timeline e extrai novos fatos sem bloquear a interação do usuário.
+### 2.6. Memória Permanente & Autobiográfica (`memory/`)
+- **Grafo de Conhecimento:** Tripletos relacionais (`sujeito -> predicado -> objeto`) no PostgreSQL para fatos atômicos invariantes sobre o mundo e o usuário.
+- **Busca Vetorial:** `pgvector` com embeddings gerados via FastEmbed local em CPU/ONNX para recuperação semântica contextual.
+- **Perfil do Usuário (`user_profiles`):** Tabela relacional com chave primária em `trait_key` que modela o perfil sociopsicológico contínuo de Natanael (preferências de comunicação, hábitos noturnos, rotina acadêmica, estilo técnico, projetos ativos e traços de personalidade), com nível de confiança (`confidence: 0.0 - 1.0`).
+- **Memória Episódica (`episodic_memories`):** Registro de episódios vivenciados, decisões arquiteturais tomadas e marcos de conversas, indexados por data e relevância (`importance: 1 - 5`).
+
+### 2.7. Estado Dinâmico da Persona (`core/persona.py`)
+- **Arquivo de Estado:** `data/persona_state.json`.
+- **Evolução Contínua:** Modela o estado anímico e relacional da Aigis em tempo real:
+  - `mood` (ex: focado, animado, cúmplice, reflexivo, protetor).
+  - `energy` (0.0 a 1.0).
+  - `affinity_level` (0.0 a 1.0, escala de vínculo e intimidade intelectual).
+  - `shared_vocabulary` (gírias internas, apelidos de código e termos familiares cunhados entre o usuário e a Aigis).
+  - `behavioral_adaptations` (adaptações aprendidas na convivência, ex: ser mais concisa ao depurar à noite).
+
+### 2.8. Worker de Reflexão Cognitiva & Curador de Datasets (`memory/worker.py` & `memory/dataset_curator.py`)
+- **Ciclo de Reflexão:** Executa em background a cada 60s acoplado ao loop assíncrono do Discord Bot (`_cognitive_daemon`).
+- **Extração Unificada via LLM:** Analisa novos lotes de interações na `shared_timeline` em um único prompt estruturado via Qwen2.5, extraindo simultaneamente:
+  1. Fatos atômicos para o Grafo de Conhecimento.
+  2. Atualizações no perfil do usuário (`user_profiles`).
+  3. Resumos de episódios marcantes (`episodic_memories`).
+  4. Adaptações de humor e termos para o estado da persona (`data/persona_state.json`).
+  5. Detecção de correções do usuário sobre erros anteriores da assistente.
+- **Curadoria Contínua de Datasets para Fine-Tuning LoRA:**
+  - **SFT (`data/training/aigis_sft.jsonl`):** Sessões de diálogo ricas e construtivas com contexto preservado em formato ChatML multi-turn.
+  - **DPO (`data/training/aigis_dpo.jsonl`):** Pares de preferência (`prompt`, `chosen`, `rejected`) extraídos automaticamente quando o usuário sinaliza uma correção ou repreensão a uma resposta da assistente.
+
+### 2.9. Motor de Iniciativa Autônoma Proativa (`core/proactive_hub.py`)
+- **Proatividade Espontânea:** A Aigis não depende exclusivamente de comandos do usuário para agir.
+- **Vigilância Noturna de Saúde e Descanso:** Entre 23:30 e 04:00, ao detectar atividade recente na timeline, dispara alerta carinhoso mas firme sugerindo descanso para o dia seguinte.
+- **Acompanhamento Pós-Hábitos:**
+  - ~09:00 (dias úteis): Acompanhamento e incentivo sobre os estudos matinais de Mandarim.
+  - ~22:00: Verificação de progresso na resolução diária de problemas do LeetCode.
+- **Proteção Anti-Spam com Redis:** Locks distribuídos com TTL (`lock:initiative:sleep_reminder`, `lock:initiative:habit_mandarin`, etc.) garantem disparo único e não invasivo.
 
 ---
 

@@ -21,27 +21,30 @@ O fine-tuning será realizado via **LoRA** congelando o modelo base e treinando 
 
 ---
 
-## 3. Composição do Dataset (*Dataset Blending*)
+## 3. Composição do Dataset (*Dataset Blending*) & Curadoria Contínua
 
-O dataset de treinamento será estruturado em 3 camadas de dados:
+O dataset de treinamento combina dados sintéticos iniciais com a **coleta autônoma e contínua** realizada em tempo real pelo curador do sistema (`memory/dataset_curator.py` e `memory/worker.py`):
 
-| Camada | Fonte | Exemplos Estimados | Objetivo Principal |
+| Camada | Fonte | Formato / Destino | Objetivo Principal |
 | :--- | :--- | :--- | :--- |
-| **1. Fluência Conversacional PT-BR** | `Canarim-Instruct-PTBR` / `Pt-Corpus-Instruct` (Hugging Face) | ~500 a 800 pares | Diálogos curtos naturais em português brasileiro informal |
-| **2. Roleplay & Dinâmica Social** | `agentlans/combined-roleplay` / Curadoria | ~200 a 300 pares | Reações contextuais a elogios, correções, ironias e alívio |
-| **3. Persona & Tool Calling Aigis** | Sintético especializado (`training/generate_aigis_data.py`) | ~250 a 400 pares | Identidade com Natanael, chamadas de PowerShell no Windows, feedback de voz conciso |
+| **1. Diálogos Reais Bem-Sucedidos (SFT)** | `memory/dataset_curator.py` | `data/training/aigis_sft.jsonl` | Diálogos reais da timeline entre Natanael e Aigis que fluíram com sucesso e naturalidade |
+| **2. Pares de Preferência e Correção (DPO)** | `memory/worker.py` | `data/training/aigis_dpo.jsonl` | Pares `{prompt, chosen, rejected}` gerados sempre que Natanael corrige um erro ou tom da Aigis |
+| **3. Fluência Conversacional PT-BR** | `Canarim-Instruct-PTBR` / Hugging Face | Externo / Base | Suporte de vocabulário e prosódia informal brasileira |
+| **4. Persona & Tool Calling Especializado** | Sintético (`training/generate_aigis_data.py`) | `data/training/synthetic_aigis.jsonl` | Identidade fundacional, ferramentas e feedback de voz |
 
 ---
 
-## 4. Pipeline de Treinamento
+## 4. Pipeline de Treinamento Contínuo
 
 ```mermaid
 flowchart LR
-    HF[Datasets Hugging Face] --> Filter[Script de Filtragem PT-BR]
-    Syn[Gerador Sintético Aigis] --> Blend[Merge em aigis_dataset.jsonl]
-    Filter --> Blend
-    Blend --> Colab[Google Colab: Unsloth / GPU T4]
-    Colab --> LoRA[Adaptador LoRA Treinado]
+    TL[shared_timeline / Interações Reais] --> CW[Cognitive Worker & Curator]
+    CW --> SFT[data/training/aigis_sft.jsonl]
+    CW --> DPO[data/training/aigis_dpo.jsonl]
+    SFT --> Blend[Compilação do Dataset]
+    DPO --> Blend
+    Blend --> Colab[Google Colab: Unsloth / GPU T4/A100]
+    Colab --> LoRA[Adaptador LoRA / DPO Treinado]
     LoRA --> Merge[Merge GGUF: aigis-7b-q4_k_m.gguf]
     Merge --> LlamaServer[Deploy no llama-server Local]
 ```

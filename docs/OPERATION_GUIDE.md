@@ -47,9 +47,14 @@ Em um terminal dedicado, inicie o `llama-server` apontando para o modelo Qwen2.5
 
 ### Passo 4: Iniciar as Interfaces da Aigis
 
-- **Para iniciar o Bot do Discord (Hub de Canais + Daemons Proativos):**
+- **Para iniciar o Bot do Discord (Hub de Canais, Daemons Proativos & Reflexão Cognitiva):**
   ```bash
   python interfaces/discord_bot.py
+  ```
+  *(O Bot executa automaticamente daemons em segundo plano para lembretes de agenda, triagem de Gmail, iniciativas de sono/hábitos e reflexão contínua da timeline a cada 60s).*
+- **Para executar a reflexão cognitiva manualmente em lote (opcional):**
+  ```bash
+  python memory/worker.py
   ```
 - **Para usar o Assistente de Voz no PC (Microfone + Alto-falante):**
   ```bash
@@ -99,3 +104,13 @@ python -m ruff check core interfaces memory tools
 # Formatação automática de código
 python -m ruff format core interfaces memory tools
 ```
+
+---
+
+## 5. Curadoria Contínua de Datasets & Estado da Persona
+
+A Aigis aprende e extrai dados de treinamento continuamente a partir do uso real:
+- **Estado Dinâmico da Persona (`data/persona_state.json`):** Contém humor atual, afinidade com o usuário e gírias/termos aprendidos.
+- **Dataset SFT (`data/training/aigis_sft.jsonl`):** Conversas multi-turn de alta qualidade gravadas para supervised fine-tuning.
+- **Dataset DPO (`data/training/aigis_dpo.jsonl`):** Pares de preferência (`chosen`/`rejected`) capturados quando o usuário corrige a assistente.
+- Para detalhes sobre o processo de fine-tuning LoRA, consulte o [Plano de Fine-Tuning LoRA](LORA_FINETUNING_PLAN.md).
