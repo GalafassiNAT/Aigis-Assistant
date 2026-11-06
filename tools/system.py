@@ -494,13 +494,14 @@ def create_calendar_event(
     title: str,
     start_time: str,
     end_time: str | None = None,
+    date: str | None = None,
     description: str = "",
     location: str = "",
 ) -> str:
     """
     Cria um novo evento/apontamento na agenda do Google Calendar do usuário.
-    start_time e end_time devem estar no formato ISO (ex: '2026-11-06T22:30:00-03:00')
-    ou apenas hora se for no dia de hoje (ex: '22:30').
+    date: Data no formato 'YYYY-MM-DD' (ex: '2026-11-09') ou nome do dia ('segunda', 'terça', etc.).
+    start_time: Horário de início ('HH:MM' como '22:30' ou ISO completo).
     """
     try:
         from datetime import datetime, timedelta
@@ -518,25 +519,51 @@ def create_calendar_event(
         creds = Credentials.from_authorized_user_file(str(token_path))
         service = build("calendar", "v3", credentials=creds)
 
-        # Trata horário relativo ao dia atual se não vier em formato completo
         now = datetime.now()
-        if "T" not in start_time:
-            # Formato HH:MM
+        target_date = now.date()
+
+        # Resolução inteligente de dia da semana se fornecido
+        DIAS_MAP = {
+            "segunda": 0, "segunda-feira": 0,
+            "terca": 1, "terça": 1, "terca-feira": 1, "terça-feira": 1,
+            "quarta": 2, "quarta-feira": 2,
+            "quinta": 3, "quinta-feira": 3,
+            "sexta": 4, "sexta-feira": 4,
+            "sabado": 5, "sábado": 5,
+            "domingo": 6,
+        }
+
+        if date:
+            clean_date = date.strip().lower()
+            if clean_date in ("amanhã", "amanha"):
+                target_date = (now + timedelta(days=1)).date()
+            elif clean_date in ("hoje",):
+                target_date = now.date()
+            elif clean_date in DIAS_MAP:
+                target_weekday = DIAS_MAP[clean_date]
+                days_ahead = (target_weekday - now.weekday()) % 7
+                if days_ahead == 0:
+                    days_ahead = 7
+                target_date = (now + timedelta(days=days_ahead)).date()
+            else:
+                try:
+                    target_date = datetime.strptime(clean_date, "%Y-%m-%d").date()
+                except Exception:
+                    pass
+
+        # Monta o ISO com base no target_date
+        if "T" in start_time:
+            start_iso = start_time
+        else:
             m = re.match(r"^(\d{1,2}):(\d{2})$", start_time.strip())
             if m:
                 hh, mm = int(m.group(1)), int(m.group(2))
-                start_dt = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
-                # Se o horário já passou hoje, agenda para o dia seguinte
-                if start_dt < now - timedelta(hours=2):
-                    start_dt += timedelta(days=1)
+                start_dt = datetime(target_date.year, target_date.month, target_date.day, hh, mm)
                 start_iso = start_dt.strftime("%Y-%m-%dT%H:%M:00-03:00")
             else:
-                start_iso = f"{now.strftime('%Y-%m-%d')}T{start_time}:00-03:00"
-        else:
-            start_iso = start_time
+                start_iso = f"{target_date.isoformat()}T{start_time}:00-03:00"
 
         if not end_time or "T" not in end_time:
-            # Padrão: 1 hora de duração
             try:
                 start_dt_obj = datetime.fromisoformat(start_iso)
                 end_iso = (start_dt_obj + timedelta(hours=1)).isoformat()
@@ -571,6 +598,41 @@ def create_calendar_event(
 
     except Exception as e:  # noqa: BLE001
         return json.dumps({"success": False, "error": f"Erro ao criar evento: {e}"}, ensure_ascii=False)
+
+
+def delete_calendar_event(event_id: str | None = None, title: str | None = None) -> str:
+    """
+    Remove ou apaga um evento do Google Calendar por ID ou por busca de título recente.
+    """
+    try:
+        from pathlib import Path
+        from google.oauth2.credentials import Credentials
+        from googleapiclient.discovery import build
+
+        token_path = Path("token.json")
+        if not token_path.exists():
+            return json.dumps({"success": False, "error": "token.json ausente."}, ensure_ascii=False)
+
+        creds = Credentials.from_authorized_user_file(str(token_path))
+        service = build("calendar", "v3", credentials=creds)
+
+        target_id = event_id
+        if not target_id and title:
+            # Busca o evento pelo título
+            events = service.events().list(calendarId="primary", q=title, maxResults=5).execute().get("items", [])
+            if events:
+                target_id = events[0]["id"]
+            else:
+                return json.dumps({"success": False, "error": f"Nenhum evento encontrado com título '{title}'."}, ensure_ascii=False)
+
+        if not target_id:
+            return json.dumps({"success": False, "error": "Informe event_id ou title para exclusão."}, ensure_ascii=False)
+
+        service.events().delete(calendarId="primary", eventId=target_id).execute()
+        return json.dumps({"success": True, "message": f"Evento '{target_id}' removido com sucesso da agenda."}, ensure_ascii=False)
+
+    except Exception as e:
+        return json.dumps({"success": False, "error": f"Erro ao excluir evento: {e}"}, ensure_ascii=False)
 
 
 # 2. Schemas JSON para Tool Calling
@@ -748,11 +810,15 @@ CREATE_CALENDAR_EVENT_SCHEMA = {
             "properties": {
                 "title": {
                     "type": "string",
-                    "description": "Título ou resumo do evento (ex: 'Reunião de Alinhamento', 'Teste', 'Dentista').",
+                    "description": "Título ou resumo do evento (ex: 'Reunião de Alinhamento', 'Apontamento de Teste', 'Dentista').",
                 },
                 "start_time": {
                     "type": "string",
-                    "description": "Horário de início (ex: '22:30' para hoje, ou formato ISO '2026-11-06T22:30:00-03:00').",
+                    "description": "Horário de início ('HH:MM' como '22:30' ou ISO completo).",
+                },
+                "date": {
+                    "type": "string",
+                    "description": "Data do evento ('YYYY-MM-DD' como '2026-11-09', ou dia da semana como 'segunda', 'terça', 'hoje', 'amanhã').",
                 },
                 "end_time": {
                     "type": "string",
@@ -772,6 +838,27 @@ CREATE_CALENDAR_EVENT_SCHEMA = {
     },
 }
 
+DELETE_CALENDAR_EVENT_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "delete_calendar_event",
+        "description": "Exclui um evento da agenda do Google Calendar por título ou ID.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "description": "Título do evento a ser excluído (ex: 'Apontamento de Teste').",
+                },
+                "event_id": {
+                    "type": "string",
+                    "description": "ID exato do evento (opcional).",
+                },
+            },
+        },
+    },
+}
+
 AVAILABLE_TOOLS = {
     "list_files": list_files,
     "read_file": read_file,
@@ -783,6 +870,7 @@ AVAILABLE_TOOLS = {
     "remember_facts": remember_facts,
     "remember_fact": remember_facts,
     "create_calendar_event": create_calendar_event,
+    "delete_calendar_event": delete_calendar_event,
 }
 
 ALL_TOOL_SCHEMAS = [
@@ -795,4 +883,5 @@ ALL_TOOL_SCHEMAS = [
     FETCH_URL_SCHEMA,
     REMEMBER_FACTS_SCHEMA,
     CREATE_CALENDAR_EVENT_SCHEMA,
+    DELETE_CALENDAR_EVENT_SCHEMA,
 ]
