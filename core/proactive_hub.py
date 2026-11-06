@@ -214,11 +214,14 @@ class ProactiveLifeHub:
             messages = results.get("messages", [])
             parsed_emails = []
 
-            # Palavras-chave de ruído e newsletters automáticas para ignorar
+            # Palavras-chave e remetentes automáticos/newsletters para ignorar na triagem proativa
             IGNORE_KEYWORDS = [
-                "desconto", "cupom", "black friday", "promoção", "newsletter",
-                "unsubscribe", "cancelar inscrição", "oferta", "compre agora",
-                "notificação de login", "segurança da conta", "termo atualizado",
+                "desconto", "cupom", "black friday", "promoção", "promocao",
+                "newsletter", "unsubscribe", "cancelar inscrição", "oferta",
+                "compre agora", "notificação de login", "segurança da conta",
+                "termo atualizado", "café com ia", "filipe deschamps newsletter",
+                "newsletters-noreply", "jobalerts-noreply", "digest", "semanal",
+                "boletim", "edição #", "edicao #",
             ]
 
             for msg_ref in messages:
@@ -234,8 +237,8 @@ class ProactiveLifeHub:
                 date = next((h["value"] for h in headers if h["name"].lower() == "date"), "")
                 snippet = msg_data.get("snippet", "")
 
-                # Triagem: Ignora emails com termos puramente promocionais
-                texto_email = f"{subject} {snippet}".lower()
+                # Triagem: Ignora emails com termos puramente promocionais ou newsletters
+                texto_email = f"{subject} {snippet} {sender}".lower()
                 if any(kw in texto_email for kw in IGNORE_KEYWORDS):
                     continue
 
