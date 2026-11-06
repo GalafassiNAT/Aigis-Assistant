@@ -427,8 +427,7 @@ class ProactiveLifeHub:
         e envia um alerta de ping ativo no Discord.
         """
         try:
-            from datetime import timedelta
-            now = datetime.now()
+            now = datetime.now().astimezone()
             events = await self.fetch_google_calendar_events(max_results=5)
             notified_cache = await self.bus.get_state("notified_reminders") or []
 
@@ -442,10 +441,13 @@ class ProactiveLifeHub:
 
                 try:
                     dt = datetime.fromisoformat(dt_str)
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=now.tzinfo)
+
                     diff_min = (dt - now).total_seconds() / 60.0
 
-                    # Se o evento começa entre 0 e 20 minutos a partir de agora:
-                    if 0 <= diff_min <= 20:
+                    # Se o evento começa entre 0 e 30 minutos a partir de agora:
+                    if 0 <= diff_min <= 30:
                         payload = {
                             "type": "agenda_alert",
                             "title": f"🔔 Lembrete: {ev_title} em breve!",
@@ -459,8 +461,8 @@ class ProactiveLifeHub:
                         # Mantém cache dos últimos 50 lembretes disparados
                         await self.bus.set_state("notified_reminders", notified_cache[-50:], expire_seconds=86400)
                         logger.info(f"[ProactiveHub] Ping de lembrete emitido para '{ev_title}' ({int(diff_min)}m)")
-                except Exception:
-                    pass
+                except Exception as ex:
+                    logger.debug(f"[ProactiveHub] Erro ao processar data {dt_str}: {ex}")
         except Exception as e:
             logger.debug(f"[ProactiveHub] Erro na checagem de lembretes: {e}")
 
