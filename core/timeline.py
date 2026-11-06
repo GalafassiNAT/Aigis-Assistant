@@ -48,13 +48,13 @@ class SharedSession:
     def register_voice_notifier(self, callback):
         self._on_voice_notify = callback
 
-    async def notify_voice(self, text: str):
+    async def notify_voice(self, text: str, lang: str = "pt"):
         if self._on_voice_notify:
             try:
                 if asyncio.iscoroutinefunction(self._on_voice_notify):
-                    await self._on_voice_notify(text)
+                    await self._on_voice_notify(text, lang=lang)
                 else:
-                    self._on_voice_notify(text)
+                    self._on_voice_notify(text, lang=lang)
             except Exception as e:
                 print(f"[Timeline] Erro ao emitir notificação de voz: {e}")
 
