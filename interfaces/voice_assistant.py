@@ -5,6 +5,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from typing import Any
 
 if sys.platform.startswith("linux"):
     os.environ.setdefault("HSA_OVERRIDE_GFX_VERSION", "11.0.0")
