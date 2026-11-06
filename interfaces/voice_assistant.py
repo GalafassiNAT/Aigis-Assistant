@@ -24,6 +24,7 @@ if sys.platform == "win32":
 import numpy as np
 from loguru import logger
 
+from core.bus import CH_DISCORD_EVENTS, CH_PROACTIVE_ALERTS, EventBus
 from core.client import chat
 from core.stt import SpeechRecognizer
 from core.timeline import SharedSession
@@ -109,6 +110,29 @@ async def main():
         await speak_notification(synth, text)
 
     session.register_voice_notifier(on_voice_notify)
+
+    # Conecta ao barramento Redis para consciência em tempo real de mensagens vindas do Discord
+    bus = EventBus()
+
+    async def listen_discord_events():
+        try:
+            async for event in bus.subscribe(CH_DISCORD_EVENTS):
+                author = event.get("author", "Usuário")
+                content = event.get("content", "")
+                channel = event.get("channel", "discord")
+                if content:
+                    print(f"\n⚡ [Discord Live]: {author} em #{channel}: {content}")
+                    # Injeta a mensagem do Discord na linha temporal unificada
+                    await session.add_user_message(
+                        source=f"discord:#{channel}",
+                        content=f"[Mensagem enviada por {author} no Discord #{channel}]: {content}",
+                    )
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.debug(f"[VoiceAssistant] Erro no listener do Discord Bus: {e}")
+
+    discord_listener_task = asyncio.create_task(listen_discord_events())
 
     # Fala inicial de prontidão
     print("\n[Inicializando Aigis...]")
@@ -283,6 +307,21 @@ async def main():
                     "tool_calls": [item["tool_call"] for item in tools_executed],
                     "tool_results": [item["result"] for item in tools_executed],
                 }
+                # Notifica o Discord via Redis para registrar auditoria das ações
+                for item in tools_executed:
+                    t_call = item.get("tool_call", {})
+                    fn = t_call.get("function", {}) if isinstance(t_call, dict) else {}
+                    fn_name = fn.get("name", "ferramenta") if isinstance(fn, dict) else "ferramenta"
+                    await bus.publish(
+                        CH_PROACTIVE_ALERTS,
+                        {
+                            "type": "tool_executed",
+                            "title": f"🛠️ Execução de Ferramenta via Voz: {fn_name}",
+                            "description": f"A Aigis executou `{fn_name}` em resposta a comando de voz.",
+                            "fields": {"Argumentos": str(fn.get("arguments", {}))[:300]},
+                            "status": "success",
+                        },
+                    )
             await session.add_assistant_message(resposta_completa, metadata=meta)
 
     except (KeyboardInterrupt, asyncio.CancelledError):

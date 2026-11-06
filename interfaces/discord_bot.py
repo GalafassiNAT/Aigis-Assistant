@@ -18,8 +18,11 @@ if sys.platform == "win32":
 import discord
 from dotenv import load_dotenv
 
+from core.bus import CH_DISCORD_EVENTS, CH_PROACTIVE_ALERTS, EventBus
 from core.client import chat, load_system_prompt
 from core.context import ContextManager, UserContext
+from core.discord_hub import DiscordHub
+from core.proactive_hub import ProactiveLifeHub
 from core.timeline import INBOX_DIR, SharedSession
 from memory.storage import MemoryStorage
 
@@ -46,7 +49,11 @@ storage = MemoryStorage()
 
 intents = discord.Intents.default()
 intents.message_content = True
+intents.guilds = True
 client = discord.Client(intents=intents)
+hub = DiscordHub(client)
+proactive_hub = ProactiveLifeHub()
+bus = EventBus.get_instance()
 
 
 def get_user_context(author: discord.User | discord.Member) -> UserContext:
@@ -136,6 +143,37 @@ async def on_ready():
     except Exception as e:
         print(f"Aviso de warmup: {e}")
 
+    # 1. Configura a estrutura de canais canônicos na categoria Botdev
+    if client.guilds:
+        primary_guild = client.guilds[0]
+        channels = await hub.setup_channels(primary_guild, category_name="Botdev")
+        print(f"📁 Canais da Aigis ativos: {list(channels.keys())}")
+
+        # 2. Compila e publica o briefing proativo inicial no Redis
+        briefing = await proactive_hub.broadcast_briefing_to_bus()
+        print(f"📅 Briefing proativo sincronizado no Redis: {briefing.get('total_pending')} itens")
+
+    # 3. Assina eventos do Redis em background para postar status e alertas automáticos
+    async def _handle_proactive_event(payload: dict):
+        ev_type = payload.get("type")
+        if ev_type == "status_log":
+            await hub.post_status_log(
+                action=payload.get("action", "Ação"),
+                description=payload.get("description", ""),
+                success=payload.get("success", True),
+                duration_ms=payload.get("duration_ms"),
+            )
+        elif ev_type == "agenda_alert":
+            await hub.post_agenda_event(
+                title=payload.get("title", "Compromisso"),
+                time_str=payload.get("time_str", "A definir"),
+                details=payload.get("details", ""),
+                location=payload.get("location", ""),
+                ping_owner=payload.get("ping_owner", False),
+            )
+
+    await bus.subscribe(CH_PROACTIVE_ALERTS, _handle_proactive_event)
+
 
 @client.event
 async def on_message(message: discord.Message):
@@ -146,6 +184,7 @@ async def on_message(message: discord.Message):
     canal_nome = getattr(message.channel, "name", "dm").lower()
     canal_id_str = str(message.channel.id)
     autor_id_str = str(message.author.id)
+    has_attachments = len(message.attachments) > 0
 
     # 1. Logging passivo contínuo para dataset de fine-tuning
     asyncio.create_task(
@@ -159,14 +198,34 @@ async def on_message(message: discord.Message):
         )
     )
 
-    # 2. Critérios de ativação de resposta
+    # 2. Notificação em tempo real via Redis (Voz fica ciente imediatamente do que ocorre no Discord)
+    asyncio.create_task(
+        bus.publish(
+            CH_DISCORD_EVENTS,
+            {
+                "author": message.author.display_name,
+                "author_id": autor_id_str,
+                "channel": canal_nome,
+                "channel_id": canal_id_str,
+                "content": message.clean_content,
+                "has_attachments": has_attachments,
+                "is_owner": bool(DISCORD_OWNER_ID and autor_id_str == str(DISCORD_OWNER_ID).strip()),
+            },
+        )
+    )
+
+    # 3. Critérios de ativação de resposta
     is_dm = isinstance(message.channel, discord.DMChannel)
-    is_dedicated = canal_nome == DEDICATED_CHANNEL_NAME
+    is_dedicated = canal_nome in (
+        DEDICATED_CHANNEL_NAME,
+        "aigis-feed",
+        "aigis-inbox",
+        "aigis-agenda",
+    )
     is_mentioned = client.user in message.mentions
-    has_attachments = len(message.attachments) > 0
     is_heuristic = should_intervene_heuristically(message.clean_content)
 
-    # Se não for DM, canal dedicado, menção direta ou trigger heurístico (ou se o dono mandar anexo no canal dedicado/DM), ignora
+    # Se não for DM, canal dedicado, menção direta ou trigger heurístico (ou anexo relevante), ignora
     if not (is_dm or is_dedicated or is_mentioned or is_heuristic or has_attachments):
         return
 

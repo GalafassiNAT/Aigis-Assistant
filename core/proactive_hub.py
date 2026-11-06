@@ -1,0 +1,285 @@
+"""
+Motor de Vida e Proatividade da Aigis (Estilo Toki / Companheira de Vida).
+Responsável por:
+1. Varrer o Obsidian Vault (Atividades e Provas, Daily Notes, Calendários) para compilar sua rotina.
+2. Integrar com Google Calendar e Gmail para capturar compromissos e triagem inteligente de emails.
+3. Notificar em tempo real através do barramento Redis (EventBus) e postar cards ricos no DiscordHub.
+4. Alimentar o contexto de voz para saudações matinais e conversação orgânica.
+"""
+
+import asyncio
+import os
+import re
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+from loguru import logger
+
+from core.bus import CH_PROACTIVE_ALERTS, EventBus
+
+VAULT_DIR = Path(
+    os.getenv(
+        "OBSIDIAN_VAULT_PATH",
+        "/home/nora/Obsidian Vaults/Vault-Obisidian",
+    )
+)
+
+
+class ProactiveLifeHub:
+    def __init__(self, vault_path: Path = VAULT_DIR):
+        self.vault_path = vault_path
+        self.bus = EventBus.get_instance()
+
+    # =========================================================================
+    # 1. Scanner Local do Obsidian Vault
+    # =========================================================================
+
+    def scan_obsidian_tasks_and_exams(self) -> list[dict[str, Any]]:
+        """Extrai tarefas pendentes e provas do Kanban e notas do Vault."""
+        items: list[dict[str, Any]] = []
+        if not self.vault_path.exists():
+            return items
+
+        # A) Atividades e Provas.md (Kanban)
+        atividades_file = self.vault_path / "Atividades e Provas.md"
+        if atividades_file.exists():
+            try:
+                content = atividades_file.read_text(encoding="utf-8")
+                matches = re.finditer(
+                    r"- \[([ xX])\] (?:\[\[(.*?)\]\]|(.*?))(?:\n|\Z)(.*?)(?=\n- \[|\Z|%%)",
+                    content,
+                    re.DOTALL,
+                )
+                for m in matches:
+                    done = m.group(1).lower() == "x"
+                    title = (m.group(2) or m.group(3) or "").strip()
+                    extra = (m.group(4) or "").strip()
+
+                    # Procura data e sala nos detalhes
+                    date_m = re.search(r"Data:\s*([^\n\r]+)", extra, re.IGNORECASE)
+                    sala_m = re.search(r"Sala:\s*([^\n\r]+)", extra, re.IGNORECASE)
+
+                    date_str = date_m.group(1).strip() if date_m else ""
+                    sala_str = sala_m.group(1).strip() if sala_m else ""
+
+                    if title:
+                        items.append(
+                            {
+                                "source": "obsidian_kanban",
+                                "title": title,
+                                "done": done,
+                                "date": date_str,
+                                "location": sala_str,
+                                "raw_details": extra,
+                            }
+                        )
+            except Exception as e:
+                logger.warning(f"[ProactiveHub] Erro ao ler Atividades e Provas: {e}")
+
+        # B) Calendário do College
+        cal_dir = self.vault_path / "College" / "Calendar"
+        if cal_dir.exists():
+            try:
+                for f in sorted(cal_dir.glob("*.md")):
+                    # Padrão: YYYY-MM-DD Disciplina - Prova X.md
+                    m_date = re.match(r"^(\d{4}-\d{2}-\d{2})\s+(.*)$", f.stem)
+                    if m_date:
+                        date_str = m_date.group(1)
+                        desc = m_date.group(2)
+                        items.append(
+                            {
+                                "source": "obsidian_college_calendar",
+                                "title": desc,
+                                "done": False,
+                                "date": date_str,
+                                "location": "Faculdade",
+                                "raw_details": f"Registro no calendário acadêmico: {f.name}",
+                            }
+                        )
+            except Exception as e:
+                logger.warning(f"[ProactiveHub] Erro ao escanear calendário do College: {e}")
+
+        return items
+
+    def get_upcoming_briefing(self) -> dict[str, Any]:
+        """Compila um resumo estruturado para o briefing matinal e conversa da Aigis."""
+        all_items = self.scan_obsidian_tasks_and_exams()
+        pending_items = [it for it in all_items if not it.get("done")]
+
+        briefing_text_lines = []
+        for it in pending_items[:5]:
+            line = f"- {it['title']}"
+            if it.get("date"):
+                line += f" (Data: {it['date']})"
+            if it.get("location"):
+                line += f" [Local: {it['location']}]"
+            briefing_text_lines.append(line)
+
+        briefing_summary = "\n".join(briefing_text_lines) if briefing_text_lines else "Nenhum compromisso ou prova pendente no momento."
+
+        return {
+            "total_pending": len(pending_items),
+            "items": pending_items,
+            "summary_text": briefing_summary,
+            "generated_at": datetime.now().isoformat(),
+        }
+
+    # =========================================================================
+    # 2. Conector Google Calendar & Gmail (Stubs prontos para OAuth2)
+    # =========================================================================
+
+    def is_google_configured(self) -> bool:
+        """Verifica se existem credenciais do Google configuradas localmente."""
+        cred_file = Path("credentials.json")
+        token_file = Path("token.json")
+        return cred_file.exists() or token_file.exists()
+
+    async def fetch_google_calendar_events(self, max_results: int = 5) -> list[dict[str, Any]]:
+        """
+        Consulta os próximos eventos do Google Calendar se as credenciais existirem.
+        Caso contrário, retorna lista vazia de forma graciosa.
+        """
+        if not self.is_google_configured():
+            return []
+
+        # Stub de execução OAuth2 seguro
+        try:
+            from google.oauth2.credentials import Credentials
+            from googleapiclient.discovery import build
+
+            token_path = Path("token.json")
+            if not token_path.exists():
+                return []
+
+            creds = Credentials.from_authorized_user_file(str(token_path))
+            service = build("calendar", "v3", credentials=creds)
+
+            now = datetime.utcnow().isoformat() + "Z"
+            events_result = await asyncio.to_thread(
+                service.events()
+                .list(
+                    calendarId="primary",
+                    timeMin=now,
+                    maxResults=max_results,
+                    singleEvents=True,
+                    orderBy="startTime",
+                )
+                .execute
+            )
+            events = events_result.get("items", [])
+            parsed = []
+            for ev in events:
+                start = ev.get("start", {}).get("dateTime", ev.get("start", {}).get("date"))
+                parsed.append(
+                    {
+                        "source": "google_calendar",
+                        "title": ev.get("summary", "Sem título"),
+                        "date": start,
+                        "location": ev.get("location", ""),
+                        "details": ev.get("description", ""),
+                    }
+                )
+            return parsed
+        except Exception as e:
+            logger.warning(f"[ProactiveHub] Google Calendar indisponível: {e}")
+            return []
+
+    async def fetch_unread_gmails(self, max_results: int = 5) -> list[dict[str, Any]]:
+        """
+        Consulta os emails recentes não lidos ou importantes na Caixa de Entrada do Gmail.
+        """
+        if not self.is_google_configured():
+            return []
+
+        try:
+            from google.oauth2.credentials import Credentials
+            from googleapiclient.discovery import build
+
+            token_path = Path("token.json")
+            if not token_path.exists():
+                return []
+
+            creds = Credentials.from_authorized_user_file(str(token_path))
+            service = build("gmail", "v1", credentials=creds)
+
+            # Busca mensagens não lidas na caixa de entrada
+            results = await asyncio.to_thread(
+                service.users()
+                .messages()
+                .list(userId="me", q="is:unread in:inbox", maxResults=max_results)
+                .execute
+            )
+            messages = results.get("messages", [])
+            parsed_emails = []
+
+            for msg_ref in messages:
+                msg_data = await asyncio.to_thread(
+                    service.users().messages().get(userId="me", id=msg_ref["id"], format="metadata").execute
+                )
+                headers = msg_data.get("payload", {}).get("headers", [])
+                subject = next((h["value"] for h in headers if h["name"].lower() == "subject"), "Sem assunto")
+                sender = next((h["value"] for h in headers if h["name"].lower() == "from"), "Desconhecido")
+                date = next((h["value"] for h in headers if h["name"].lower() == "date"), "")
+                snippet = msg_data.get("snippet", "")
+
+                parsed_emails.append({
+                    "id": msg_ref["id"],
+                    "subject": subject,
+                    "sender": sender,
+                    "date": date,
+                    "snippet": snippet,
+                })
+
+            return parsed_emails
+        except Exception as e:
+            logger.warning(f"[ProactiveHub] Gmail indisponível: {e}")
+            return []
+
+    # =========================================================================
+    # 3. Disparador de Alertas para Barramento e Discord
+    # =========================================================================
+
+    async def broadcast_briefing_to_bus(self):
+        """Publica o briefing compilado (Obsidian + Google Calendar + Gmail) no Redis para consumo de Voz e Interfaces."""
+        briefing = self.get_upcoming_briefing()
+        
+        # Agrega Google Calendar se disponível
+        g_events = await self.fetch_google_calendar_events(5)
+        if g_events:
+            g_lines = [f"- 📅 {ev['title']} ({ev['date']})" for ev in g_events]
+            briefing["summary_text"] += "\n\nGoogle Calendar:\n" + "\n".join(g_lines)
+            briefing["items"].extend(g_events)
+            briefing["total_pending"] += len(g_events)
+
+        # Agrega Gmail se disponível
+        g_emails = await self.fetch_unread_gmails(3)
+        if g_emails:
+            em_lines = [f"- ✉️ De: {em['sender']} | Assunto: {em['subject']}" for em in g_emails]
+            briefing["summary_text"] += "\n\nEmails Recentes Não Lidos:\n" + "\n".join(em_lines)
+
+        payload = {
+            "type": "daily_briefing",
+            "summary": briefing["summary_text"],
+            "total_pending": briefing["total_pending"],
+            "emails": g_emails,
+            "timestamp": datetime.now().isoformat(),
+        }
+        await self.bus.publish(CH_PROACTIVE_ALERTS, payload)
+        # Salva o último briefing no estado efêmero do Redis (válido por 12 horas)
+        await self.bus.set_state("daily_briefing", payload, expire_seconds=43200)
+        return briefing
+
+    async def sync_agenda_to_discord(self, discord_hub: Any):
+        """Varre itens pendentes e publica novos eventos em #aigis-agenda."""
+        briefing = self.get_upcoming_briefing()
+        for item in briefing["items"][:3]:
+            try:
+                await discord_hub.post_agenda_event(
+                    title=item["title"],
+                    time_str=item.get("date") or "A definir",
+                    details=item.get("raw_details", ""),
+                    location=item.get("location", ""),
+                    ping_owner=False,
+                )
+            except Exception as e:
+                logger.error(f"[ProactiveHub] Erro ao postar no Discord: {e}")

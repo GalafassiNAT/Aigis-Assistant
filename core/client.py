@@ -265,6 +265,65 @@ async def chat(
         if contexto_memoria:
             temporal_info += f"\n[Memória Recuperada:\n{contexto_memoria}]"
 
+        # Injeta briefing proativo da rotina/agenda se a pergunta for sobre tarefas, provas ou rotina
+        if any(
+            k in pergunta.lower()
+            for k in (
+                "agenda",
+                "prova",
+                "provas",
+                "tarefa",
+                "tarefas",
+                "hoje",
+                "compromisso",
+                "compromissos",
+                "faculdade",
+                "college",
+                "estudar",
+                "email",
+                "emails",
+                "e-mail",
+                "gmail",
+                "mensagem",
+            )
+        ):
+            try:
+                from core.bus import EventBus
+
+                briefing_data = await EventBus.get_instance().get_state("daily_briefing")
+                if briefing_data and briefing_data.get("summary"):
+                    temporal_info += f"\n[Agenda, Provas e Emails no Radar:\n{briefing_data['summary']}]"
+            except Exception:
+                pass
+
+        # Injeta contexto do Workspace Geral (Projetos Git, TCC, Daily Note, Áreas de Estudo)
+        if any(
+            k in pergunta.lower()
+            for k in (
+                "projeto",
+                "projetos",
+                "workspace",
+                "tcc",
+                "git",
+                "repositório",
+                "repositorio",
+                "estudo",
+                "estudos",
+                "trabalhando",
+                "fazer",
+                "foco",
+                "aigis",
+            )
+        ):
+            try:
+                from core.bus import EventBus
+
+                ws_data = await EventBus.get_instance().get_state("user_workspace_context")
+                if ws_data and ws_data.get("summary_text"):
+                    temporal_info += f"\n[Contexto do Workspace do Usuário:\n{ws_data['summary_text']}]"
+            except Exception:
+                pass
+
         payload_messages[-1] = {
             "role": "user",
             "content": f"{temporal_info}\n\n{pergunta}" if temporal_info else pergunta,
