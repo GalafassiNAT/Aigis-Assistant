@@ -263,7 +263,21 @@ class ProactiveLifeHub:
         # Agrega Google Calendar se disponível
         g_events = await self.fetch_google_calendar_events(5)
         if g_events:
-            g_lines = [f"- 📅 {ev['title']} ({ev['date']})" for ev in g_events]
+            # Formata eventos do Google Calendar com dia da semana e hora amigável
+            DIAS_SEMANA = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"]
+            g_lines = []
+            for ev in g_events:
+                dt_str = ev.get("date", "")
+                label = ev["title"]
+                try:
+                    dt = datetime.fromisoformat(dt_str)
+                    dia_nome = DIAS_SEMANA[dt.weekday()]
+                    hora_min = dt.strftime("%H:%M")
+                    dia_mes = dt.strftime("%d/%m")
+                    g_lines.append(f"- 📅 {label} ({dia_nome}, {dia_mes} às {hora_min})")
+                except Exception:
+                    g_lines.append(f"- 📅 {label} ({dt_str})")
+
             briefing["summary_text"] += "\n\nGoogle Calendar:\n" + "\n".join(g_lines)
             briefing["items"].extend(g_events)
             briefing["total_pending"] += len(g_events)
