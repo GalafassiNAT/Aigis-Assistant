@@ -27,9 +27,11 @@ from loguru import logger
 
 from core.bus import CH_DISCORD_EVENTS, CH_PROACTIVE_ALERTS, EventBus
 from core.client import chat
+from core.proactive_hub import ProactiveLifeHub
 from core.stt import SpeechRecognizer
 from core.timeline import SharedSession
 from core.voice import VoiceSynthesizer
+from core.workspace_hub import WorkspaceHub
 
 _BOUNDARY_RE = re.compile(r"([.!?]+|[,;:]|\n+|\))\s*")
 
@@ -128,6 +130,17 @@ async def main():
             )
 
     discord_listener_task = await bus.subscribe(CH_DISCORD_EVENTS, on_discord_event)
+
+    # Sincroniza estado inicial do Workspace e Agenda proativa para prontidão de resposta
+    proactive_hub = ProactiveLifeHub()
+    workspace_hub = WorkspaceHub()
+    try:
+        await asyncio.gather(
+            proactive_hub.broadcast_briefing_to_bus(),
+            workspace_hub.update_workspace_state(),
+        )
+    except Exception as e:
+        logger.debug(f"[VoiceAssistant] Erro ao carregar briefing inicial: {e}")
 
     # Fala inicial de prontidão
     print("\n[Inicializando Aigis...]")

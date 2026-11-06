@@ -771,16 +771,17 @@ class VoiceSynthesizer:
 
             base_data, base_sr, _, pitch_shift = await asyncio.to_thread(_get_base)
 
-        # 4. Trato Vocal Aigis RVC v2 40kHz Nativo em GPU (protect=0.52 preserva a força dos fonemas R, S e T)
+        # 4. Trato Vocal Aigis RVC v2 40kHz Nativo em GPU
+        # index_rate=0.15 e protect=0.55 garantem voz mais estável, eliminando aspereza e trêmulo
         def _convert_gpu():
             with self._gpu_lock:
                 return self.vocal_tract.convert_tensor(
                     base_data,
                     base_sr,
                     pitch_shift=pitch_shift,
-                    index_rate=0.22,
-                    protect=0.52,
-                    target_f0_med=230.0,
+                    index_rate=0.15,
+                    protect=0.55,
+                    target_f0_med=225.0,
                 )
 
         return await asyncio.to_thread(_convert_gpu)
