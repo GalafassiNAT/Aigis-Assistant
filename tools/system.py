@@ -490,12 +490,46 @@ def remember_facts(facts: list[dict] | dict | None = None, **kwargs) -> str:
         return json.dumps({"success": False, "error": str(e)}, ensure_ascii=False)
 
 
+def _get_category_color(title: str, user_color: str | None = None) -> str:
+    """
+    Retorna o ColorId do Google Calendar (1 a 11) com base no contexto do evento:
+    1: Lavanda (#a4bdfc) -> Geral
+    2: Verde Sálvia (#7ae7bf) -> Idiomas / Mandarim / Estudos leves
+    3: Uva / Roxo (#dbadff) -> Aigis / Projetos / Código / LeetCode
+    5: Amarelo Banana (#fbd75b) -> Avisos / Atenção
+    6: Laranja Tangerina (#ffb878) -> Faculdade / Aulas / Provas
+    10: Verde Basílico (#51b749) -> Lazer / Saúde
+    11: Vermelho (#dc2127) -> Urgente / Deadline
+    """
+    if user_color:
+        cmap = {
+            "azul": "9", "lavanda": "1", "verde": "2", "roxo": "3",
+            "vermelho": "11", "amarelo": "5", "laranja": "6", "cinza": "8"
+        }
+        if str(user_color).lower() in cmap:
+            return cmap[str(user_color).lower()]
+        if str(user_color).isdigit() and 1 <= int(user_color) <= 11:
+            return str(user_color)
+
+    t = title.lower()
+    if any(k in t for k in ("mandarim", "idioma", "chinês", "chines", "leitura", "inglês", "ingles")):
+        return "2"  # Verde Sálvia
+    if any(k in t for k in ("leetcode", "código", "codigo", "programação", "programacao", "aigis", "dev", "projeto")):
+        return "3"  # Roxo
+    if any(k in t for k in ("faculdade", "utfpr", "aula", "prova", "trabalho acadêmico", "tcc")):
+        return "6"  # Laranja Tangerina
+    if any(k in t for k in ("urgente", "deadline", "entrega", "médico", "dentista")):
+        return "11" # Vermelho
+    return "9"      # Azul padrão
+
+
 def create_calendar_event(
     title: str,
     start_time: str,
     end_time: str | None = None,
     date: str | None = None,
     recurrence: str | None = None,
+    color: str | None = None,
     description: str = "",
     location: str = "",
 ) -> str:
@@ -503,7 +537,8 @@ def create_calendar_event(
     Cria um novo evento/apontamento na agenda do Google Calendar do usuário.
     date: Data no formato 'YYYY-MM-DD' (ex: '2026-11-09') ou nome do dia ('segunda', 'terça', etc.).
     start_time: Horário de início ('HH:MM' como '22:30' ou ISO completo).
-    recurrence: Padrão de recorrência ('semanal' / 'weekly', 'diario' / 'daily', 'mensal' / 'monthly', etc.).
+    recurrence: Padrão de recorrência ('semanal' / 'weekly', 'dias_uteis' / 'dias de semana' (seg a sex), 'diario' / 'daily', etc.).
+    color: Cor desejada (opcional: 'verde', 'roxo', 'laranja', 'vermelho', 'amarelo', 'azul').
     """
     try:
         from datetime import datetime, timedelta
@@ -574,10 +609,14 @@ def create_calendar_event(
         else:
             end_iso = end_time
 
+        # Atribuição de cor automática por tema
+        chosen_color = _get_category_color(title, color)
+
         event_body = {
             "summary": title,
             "description": description,
             "location": location,
+            "colorId": chosen_color,
             "start": {"dateTime": start_iso, "timeZone": "America/Sao_Paulo"},
             "end": {"dateTime": end_iso, "timeZone": "America/Sao_Paulo"},
         }
@@ -585,7 +624,10 @@ def create_calendar_event(
         # Trata regra de recorrência do RFC 5545 (RRULE)
         if recurrence:
             rec_clean = recurrence.strip().lower()
-            if any(k in rec_clean for k in ("semanal", "semana", "weekly")):
+            if any(k in rec_clean for k in ("dias_uteis", "dias de semana", "segunda a sexta", "weekdays", "exceto sábado e domingo", "sem fim de semana")):
+                # Recorrência oficial segunda a sexta:
+                event_body["recurrence"] = ["RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR"]
+            elif any(k in rec_clean for k in ("semanal", "semana", "weekly")):
                 event_body["recurrence"] = ["RRULE:FREQ=WEEKLY"]
             elif any(k in rec_clean for k in ("diario", "diário", "dia", "daily")):
                 event_body["recurrence"] = ["RRULE:FREQ=DAILY"]
@@ -604,9 +646,10 @@ def create_calendar_event(
                 "title": title,
                 "start": start_iso,
                 "end": end_iso,
+                "color_id": chosen_color,
                 "recurrence": event_body.get("recurrence"),
                 "link": html_link,
-                "message": f"Evento '{title}' criado com sucesso no Google Calendar para {start_iso} com recorrência {event_body.get('recurrence')}.",
+                "message": f"Evento '{title}' criado com sucesso no Google Calendar para {start_iso} (cor: {chosen_color}) com recorrência {event_body.get('recurrence')}.",
             },
             ensure_ascii=False,
         )
