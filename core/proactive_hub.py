@@ -202,17 +202,29 @@ class ProactiveLifeHub:
             creds = Credentials.from_authorized_user_file(str(token_path))
             service = build("gmail", "v1", credentials=creds)
 
-            # Busca mensagens não lidas na caixa de entrada
+            # Busca mensagens não lidas na caixa de entrada, filtrando promoções e redes sociais
+            # Exclui categorias automatizadas comuns do Gmail: promotions, social, spam, trash
+            query = "is:unread in:inbox -category:promotions -category:social"
             results = await asyncio.to_thread(
                 service.users()
                 .messages()
-                .list(userId="me", q="is:unread in:inbox", maxResults=max_results)
+                .list(userId="me", q=query, maxResults=max_results * 2)
                 .execute
             )
             messages = results.get("messages", [])
             parsed_emails = []
 
+            # Palavras-chave de ruído e newsletters automáticas para ignorar
+            IGNORE_KEYWORDS = [
+                "desconto", "cupom", "black friday", "promoção", "newsletter",
+                "unsubscribe", "cancelar inscrição", "oferta", "compre agora",
+                "notificação de login", "segurança da conta", "termo atualizado",
+            ]
+
             for msg_ref in messages:
+                if len(parsed_emails) >= max_results:
+                    break
+
                 msg_data = await asyncio.to_thread(
                     service.users().messages().get(userId="me", id=msg_ref["id"], format="metadata").execute
                 )
@@ -221,6 +233,11 @@ class ProactiveLifeHub:
                 sender = next((h["value"] for h in headers if h["name"].lower() == "from"), "Desconhecido")
                 date = next((h["value"] for h in headers if h["name"].lower() == "date"), "")
                 snippet = msg_data.get("snippet", "")
+
+                # Triagem: Ignora emails com termos puramente promocionais
+                texto_email = f"{subject} {snippet}".lower()
+                if any(kw in texto_email for kw in IGNORE_KEYWORDS):
+                    continue
 
                 parsed_emails.append({
                     "id": msg_ref["id"],
