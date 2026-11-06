@@ -495,6 +495,7 @@ def create_calendar_event(
     start_time: str,
     end_time: str | None = None,
     date: str | None = None,
+    recurrence: str | None = None,
     description: str = "",
     location: str = "",
 ) -> str:
@@ -502,6 +503,7 @@ def create_calendar_event(
     Cria um novo evento/apontamento na agenda do Google Calendar do usuário.
     date: Data no formato 'YYYY-MM-DD' (ex: '2026-11-09') ou nome do dia ('segunda', 'terça', etc.).
     start_time: Horário de início ('HH:MM' como '22:30' ou ISO completo).
+    recurrence: Padrão de recorrência ('semanal' / 'weekly', 'diario' / 'daily', 'mensal' / 'monthly', etc.).
     """
     try:
         from datetime import datetime, timedelta
@@ -580,8 +582,37 @@ def create_calendar_event(
             "end": {"dateTime": end_iso, "timeZone": "America/Sao_Paulo"},
         }
 
+        # Trata regra de recorrência do RFC 5545 (RRULE)
+        if recurrence:
+            rec_clean = recurrence.strip().lower()
+            if any(k in rec_clean for k in ("semanal", "semana", "weekly")):
+                event_body["recurrence"] = ["RRULE:FREQ=WEEKLY"]
+            elif any(k in rec_clean for k in ("diario", "diário", "dia", "daily")):
+                event_body["recurrence"] = ["RRULE:FREQ=DAILY"]
+            elif any(k in rec_clean for k in ("mensal", "mês", "mes", "monthly")):
+                event_body["recurrence"] = ["RRULE:FREQ=MONTHLY"]
+            elif rec_clean.startswith("rrule:"):
+                event_body["recurrence"] = [recurrence.upper()]
+
         created = service.events().insert(calendarId="primary", body=event_body).execute()
         html_link = created.get("htmlLink", "")
+
+        return json.dumps(
+            {
+                "success": True,
+                "event_id": created.get("id"),
+                "title": title,
+                "start": start_iso,
+                "end": end_iso,
+                "recurrence": event_body.get("recurrence"),
+                "link": html_link,
+                "message": f"Evento '{title}' criado com sucesso no Google Calendar para {start_iso} com recorrência {event_body.get('recurrence')}.",
+            },
+            ensure_ascii=False,
+        )
+
+    except Exception as e:  # noqa: BLE001
+        return json.dumps({"success": False, "error": f"Erro ao criar evento: {e}"}, ensure_ascii=False)
 
         return json.dumps(
             {
@@ -833,6 +864,10 @@ CREATE_CALENDAR_EVENT_SCHEMA = {
                 "date": {
                     "type": "string",
                     "description": "Data do evento ('YYYY-MM-DD' como '2026-11-09', ou dia da semana como 'segunda', 'terça', 'hoje', 'amanhã').",
+                },
+                "recurrence": {
+                    "type": "string",
+                    "description": "Regra de repetição caso seja recorrente (ex: 'semanal', 'diário', 'mensal' ou 'RRULE:FREQ=WEEKLY').",
                 },
                 "end_time": {
                     "type": "string",
