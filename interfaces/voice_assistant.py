@@ -114,25 +114,19 @@ async def main():
     # Conecta ao barramento Redis para consciência em tempo real de mensagens vindas do Discord
     bus = EventBus()
 
-    async def listen_discord_events():
-        try:
-            async for event in bus.subscribe(CH_DISCORD_EVENTS):
-                author = event.get("author", "Usuário")
-                content = event.get("content", "")
-                channel = event.get("channel", "discord")
-                if content:
-                    print(f"\n⚡ [Discord Live]: {author} em #{channel}: {content}")
-                    # Injeta a mensagem do Discord na linha temporal unificada
-                    await session.add_user_message(
-                        source=f"discord:#{channel}",
-                        content=f"[Mensagem enviada por {author} no Discord #{channel}]: {content}",
-                    )
-        except asyncio.CancelledError:
-            pass
-        except Exception as e:
-            logger.debug(f"[VoiceAssistant] Erro no listener do Discord Bus: {e}")
+    async def on_discord_event(event: dict[str, Any]):
+        author = event.get("author", "Usuário")
+        content = event.get("content", "")
+        channel = event.get("channel", "discord")
+        if content:
+            print(f"\n⚡ [Discord Live]: {author} em #{channel}: {content}")
+            # Injeta a mensagem do Discord na linha temporal unificada
+            await session.add_user_message(
+                source=f"discord:#{channel}",
+                content=f"[Mensagem enviada por {author} no Discord #{channel}]: {content}",
+            )
 
-    discord_listener_task = asyncio.create_task(listen_discord_events())
+    discord_listener_task = await bus.subscribe(CH_DISCORD_EVENTS, on_discord_event)
 
     # Fala inicial de prontidão
     print("\n[Inicializando Aigis...]")
