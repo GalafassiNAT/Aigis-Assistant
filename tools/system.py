@@ -680,6 +680,178 @@ def delete_calendar_event(event_id: str | None = None, title: str | None = None)
         return json.dumps({"success": False, "error": f"Erro ao excluir evento: {e}"}, ensure_ascii=False)
 
 
+def search_google_drive(query: str, max_results: int = 5) -> str:
+    """
+    Pesquisa arquivos, documentos, planilhas e PDFs no Google Drive do usuário.
+    """
+    try:
+        from pathlib import Path
+        from google.oauth2.credentials import Credentials
+        from googleapiclient.discovery import build
+
+        token_path = Path("token.json")
+        if not token_path.exists():
+            return json.dumps({"success": False, "error": "token.json ausente."}, ensure_ascii=False)
+
+        creds = Credentials.from_authorized_user_file(str(token_path))
+        drive = build("drive", "v3", credentials=creds)
+
+        # Monta a query para buscar por nome ou conteúdo
+        q_filter = f"name contains '{query}' and trashed = false"
+        results = drive.files().list(
+            q=q_filter,
+            pageSize=max_results,
+            fields="files(id, name, mimeType, modifiedTime, size)",
+        ).execute()
+
+        files = results.get("files", [])
+        if not files:
+            # Fallback: busca ampla de texto completo
+            try:
+                results_broad = drive.files().list(
+                    q=f"fullText contains '{query}' and trashed = false",
+                    pageSize=max_results,
+                    fields="files(id, name, mimeType, modifiedTime)",
+                ).execute()
+                files = results_broad.get("files", [])
+            except Exception:
+                pass
+
+        if not files:
+            return json.dumps({"success": True, "files": [], "message": f"Nenhum arquivo encontrado no Google Drive para '{query}'."}, ensure_ascii=False)
+
+        return json.dumps({"success": True, "files": files, "count": len(files)}, ensure_ascii=False)
+
+    except Exception as e:
+        return json.dumps({"success": False, "error": f"Erro na busca do Drive: {e}"}, ensure_ascii=False)
+
+
+def read_google_drive_file(file_id: str, max_chars: int = 4000) -> str:
+    """
+    Baixa e extrai o conteúdo textual de um arquivo ou Google Doc no Google Drive.
+    """
+    try:
+        import io
+        from pathlib import Path
+        from google.oauth2.credentials import Credentials
+        from googleapiclient.discovery import build
+        from googleapiclient.http import MediaIoBaseDownload
+
+        token_path = Path("token.json")
+        if not token_path.exists():
+            return json.dumps({"success": False, "error": "token.json ausente."}, ensure_ascii=False)
+
+        creds = Credentials.from_authorized_user_file(str(token_path))
+        drive = build("drive", "v3", credentials=creds)
+
+        file_meta = drive.files().get(fileId=file_id, fields="name, mimeType").execute()
+        mime = file_meta.get("mimeType", "")
+        name = file_meta.get("name", "arquivo")
+
+        # Se for Google Docs, exporta para texto puro
+        if mime == "application/vnd.google-apps.document":
+            content_bytes = drive.files().export(fileId=file_id, mimeType="text/plain").execute()
+            text = content_bytes.decode("utf-8", errors="replace")
+        elif mime == "application/vnd.google-apps.spreadsheet":
+            content_bytes = drive.files().export(fileId=file_id, mimeType="text/csv").execute()
+            text = content_bytes.decode("utf-8", errors="replace")
+        else:
+            # Arquivo binário/texto direto
+            request = drive.files().get_media(fileId=file_id)
+            fh = io.BytesIO()
+            downloader = MediaIoBaseDownload(fh, request)
+            done = False
+            while not done:
+                _, done = downloader.next_chunk()
+            fh.seek(0)
+            text = fh.read().decode("utf-8", errors="replace")
+
+        truncated = len(text) > max_chars
+        return json.dumps({
+            "success": True,
+            "file_name": name,
+            "mime_type": mime,
+            "content": text[:max_chars],
+            "truncated": truncated,
+        }, ensure_ascii=False)
+
+    except Exception as e:
+        return json.dumps({"success": False, "error": f"Erro ao ler arquivo do Drive: {e}"}, ensure_ascii=False)
+
+
+def read_email_body(email_id: str | None = None, subject_query: str | None = None, max_chars: int = 4000) -> str:
+    """
+    Lê o corpo completo e detalhes de um email específico no Gmail (por ID ou busca de assunto).
+    """
+    try:
+        import base64
+        from pathlib import Path
+        from google.oauth2.credentials import Credentials
+        from googleapiclient.discovery import build
+
+        token_path = Path("token.json")
+        if not token_path.exists():
+            return json.dumps({"success": False, "error": "token.json ausente."}, ensure_ascii=False)
+
+        creds = Credentials.from_authorized_user_file(str(token_path))
+        service = build("gmail", "v1", credentials=creds)
+
+        target_id = email_id
+        if not target_id and subject_query:
+            res = service.users().messages().list(userId="me", q=f"subject:{subject_query}", maxResults=1).execute()
+            msgs = res.get("messages", [])
+            if msgs:
+                target_id = msgs[0]["id"]
+            else:
+                # Tenta busca global
+                res_broad = service.users().messages().list(userId="me", q=subject_query, maxResults=1).execute()
+                msgs_broad = res_broad.get("messages", [])
+                if msgs_broad:
+                    target_id = msgs_broad[0]["id"]
+
+        if not target_id:
+            return json.dumps({"success": False, "error": f"Nenhum email localizado para '{subject_query or email_id}'."}, ensure_ascii=False)
+
+        msg = service.users().messages().get(userId="me", id=target_id, format="full").execute()
+        payload = msg.get("payload", {})
+        headers = payload.get("headers", [])
+
+        subject = next((h["value"] for h in headers if h["name"].lower() == "subject"), "Sem assunto")
+        sender = next((h["value"] for h in headers if h["name"].lower() == "from"), "Desconhecido")
+        date = next((h["value"] for h in headers if h["name"].lower() == "date"), "")
+
+        # Extrai corpo de texto das partes MIME
+        body_text = ""
+        parts = [payload]
+        while parts:
+            p = parts.pop(0)
+            if p.get("mimeType") == "text/plain" and p.get("body", {}).get("data"):
+                data_decoded = base64.urlsafe_b64decode(p["body"]["data"]).decode("utf-8", errors="replace")
+                body_text += data_decoded + "\n"
+            elif p.get("parts"):
+                parts.extend(p["parts"])
+
+        if not body_text:
+            body_text = msg.get("snippet", "")
+
+        # Limpa espaços e quebras excessivas
+        body_clean = re.sub(r"\n{3,}", "\n\n", body_text).strip()
+        truncated = len(body_clean) > max_chars
+
+        return json.dumps({
+            "success": True,
+            "id": target_id,
+            "subject": subject,
+            "sender": sender,
+            "date": date,
+            "body": body_clean[:max_chars],
+            "truncated": truncated,
+        }, ensure_ascii=False)
+
+    except Exception as e:
+        return json.dumps({"success": False, "error": f"Erro ao ler corpo do email: {e}"}, ensure_ascii=False)
+
+
 # 2. Schemas JSON para Tool Calling
 
 LIST_FILES_SCHEMA = {
@@ -908,6 +1080,67 @@ DELETE_CALENDAR_EVENT_SCHEMA = {
     },
 }
 
+SEARCH_GOOGLE_DRIVE_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "search_google_drive",
+        "description": "Pesquisa arquivos, documentos, PDFs ou planilhas armazenados no Google Drive do usuário.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Nome ou palavra-chave para buscar no Google Drive (ex: 'checkpoint', 'TCC', 'redes neurais').",
+                },
+                "max_results": {
+                    "type": "integer",
+                    "description": "Número máximo de arquivos a retornar (padrão: 5).",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+}
+
+READ_GOOGLE_DRIVE_FILE_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "read_google_drive_file",
+        "description": "Lê o conteúdo textual de um arquivo ou Google Doc no Google Drive pelo seu file_id.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "file_id": {
+                    "type": "string",
+                    "description": "ID exclusivo do arquivo no Google Drive.",
+                },
+            },
+            "required": ["file_id"],
+        },
+    },
+}
+
+READ_EMAIL_BODY_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "read_email_body",
+        "description": "Lê o conteúdo completo de um email no Gmail por ID da mensagem ou por busca de assunto (ex: 'estágio', 'Ada Tech', 'LinkedIn').",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "subject_query": {
+                    "type": "string",
+                    "description": "Termo ou palavra-chave no assunto do email para localizar.",
+                },
+                "email_id": {
+                    "type": "string",
+                    "description": "ID exato da mensagem no Gmail (opcional).",
+                },
+            },
+        },
+    },
+}
+
 AVAILABLE_TOOLS = {
     "list_files": list_files,
     "read_file": read_file,
@@ -920,6 +1153,9 @@ AVAILABLE_TOOLS = {
     "remember_fact": remember_facts,
     "create_calendar_event": create_calendar_event,
     "delete_calendar_event": delete_calendar_event,
+    "search_google_drive": search_google_drive,
+    "read_google_drive_file": read_google_drive_file,
+    "read_email_body": read_email_body,
 }
 
 ALL_TOOL_SCHEMAS = [
@@ -933,4 +1169,7 @@ ALL_TOOL_SCHEMAS = [
     REMEMBER_FACTS_SCHEMA,
     CREATE_CALENDAR_EVENT_SCHEMA,
     DELETE_CALENDAR_EVENT_SCHEMA,
+    SEARCH_GOOGLE_DRIVE_SCHEMA,
+    READ_GOOGLE_DRIVE_FILE_SCHEMA,
+    READ_EMAIL_BODY_SCHEMA,
 ]

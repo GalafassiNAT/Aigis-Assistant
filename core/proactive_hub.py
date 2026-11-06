@@ -300,6 +300,49 @@ class ProactiveLifeHub:
         await self.bus.set_state("daily_briefing", payload, expire_seconds=43200)
         return briefing
 
+    async def check_upcoming_reminders_and_ping(self):
+        """
+        Verifica se há algum compromisso começando nos próximos 15 a 30 minutos
+        e envia um alerta de ping ativo no Discord.
+        """
+        try:
+            from datetime import timedelta
+            now = datetime.now()
+            events = await self.fetch_google_calendar_events(max_results=5)
+            notified_cache = await self.bus.get_state("notified_reminders") or []
+
+            for ev in events:
+                dt_str = ev.get("date", "")
+                ev_title = ev.get("title", "Compromisso")
+                ev_id = f"{ev_title}_{dt_str}"
+
+                if ev_id in notified_cache:
+                    continue
+
+                try:
+                    dt = datetime.fromisoformat(dt_str)
+                    diff_min = (dt - now).total_seconds() / 60.0
+
+                    # Se o evento começa entre 0 e 20 minutos a partir de agora:
+                    if 0 <= diff_min <= 20:
+                        payload = {
+                            "type": "agenda_alert",
+                            "title": f"🔔 Lembrete: {ev_title} em breve!",
+                            "time_str": f"Em ~{int(diff_min)} minutos ({dt.strftime('%H:%M')})",
+                            "details": ev.get("details") or "Seu próximo compromisso está prestes a começar.",
+                            "location": ev.get("location", ""),
+                            "ping_owner": True,
+                        }
+                        await self.bus.publish(CH_PROACTIVE_ALERTS, payload)
+                        notified_cache.append(ev_id)
+                        # Mantém cache dos últimos 50 lembretes disparados
+                        await self.bus.set_state("notified_reminders", notified_cache[-50:], expire_seconds=86400)
+                        logger.info(f"[ProactiveHub] Ping de lembrete emitido para '{ev_title}' ({int(diff_min)}m)")
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.debug(f"[ProactiveHub] Erro na checagem de lembretes: {e}")
+
     async def sync_agenda_to_discord(self, discord_hub: Any):
         """Varre itens pendentes e publica novos eventos em #aigis-agenda."""
         briefing = self.get_upcoming_briefing()

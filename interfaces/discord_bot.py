@@ -174,6 +174,17 @@ async def on_ready():
 
     await bus.subscribe(CH_PROACTIVE_ALERTS, _handle_proactive_event)
 
+    # 4. Worker contínuo de checagem de lembretes (roda a cada 60s em background)
+    async def _reminder_daemon():
+        while True:
+            try:
+                await proactive_hub.check_upcoming_reminders_and_ping()
+            except Exception as e:
+                logger.debug(f"[DiscordDaemon] Erro ao checar lembretes: {e}")
+            await asyncio.sleep(60)
+
+    asyncio.create_task(_reminder_daemon())
+
 
 @client.event
 async def on_message(message: discord.Message):
