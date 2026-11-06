@@ -602,7 +602,8 @@ def create_calendar_event(
 
 def delete_calendar_event(event_id: str | None = None, title: str | None = None) -> str:
     """
-    Remove ou apaga um evento do Google Calendar por ID ou por busca de título recente.
+    Remove ou apaga um evento do Google Calendar por ID ou por busca de título.
+    Se houver múltiplos eventos com o mesmo título, remove todos que coincidirem.
     """
     try:
         from pathlib import Path
@@ -616,20 +617,33 @@ def delete_calendar_event(event_id: str | None = None, title: str | None = None)
         creds = Credentials.from_authorized_user_file(str(token_path))
         service = build("calendar", "v3", credentials=creds)
 
-        target_id = event_id
-        if not target_id and title:
-            # Busca o evento pelo título
-            events = service.events().list(calendarId="primary", q=title, maxResults=5).execute().get("items", [])
-            if events:
-                target_id = events[0]["id"]
-            else:
-                return json.dumps({"success": False, "error": f"Nenhum evento encontrado com título '{title}'."}, ensure_ascii=False)
+        deleted_ids = []
 
-        if not target_id:
-            return json.dumps({"success": False, "error": "Informe event_id ou title para exclusão."}, ensure_ascii=False)
+        if event_id:
+            service.events().delete(calendarId="primary", eventId=event_id).execute()
+            deleted_ids.append(event_id)
+        elif title:
+            # Busca eventos que contenham o título
+            events = service.events().list(calendarId="primary", q=title, maxResults=15).execute().get("items", [])
+            matches = [ev for ev in events if title.strip().lower() in ev.get("summary", "").lower()]
+            if not matches:
+                # Tenta busca exata se a busca de texto livre do Google não filtrou
+                matches = events
 
-        service.events().delete(calendarId="primary", eventId=target_id).execute()
-        return json.dumps({"success": True, "message": f"Evento '{target_id}' removido com sucesso da agenda."}, ensure_ascii=False)
+            for ev in matches:
+                try:
+                    service.events().delete(calendarId="primary", eventId=ev["id"]).execute()
+                    deleted_ids.append(ev["id"])
+                except Exception:
+                    pass
+
+        if not deleted_ids:
+            return json.dumps({"success": False, "error": f"Nenhum evento encontrado para exclusão com '{title or event_id}'."}, ensure_ascii=False)
+
+        return json.dumps({
+            "success": True,
+            "message": f"{len(deleted_ids)} evento(s) removido(s) com sucesso da agenda: {', '.join(deleted_ids)}."
+        }, ensure_ascii=False)
 
     except Exception as e:
         return json.dumps({"success": False, "error": f"Erro ao excluir evento: {e}"}, ensure_ascii=False)
