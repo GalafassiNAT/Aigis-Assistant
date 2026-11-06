@@ -490,6 +490,89 @@ def remember_facts(facts: list[dict] | dict | None = None, **kwargs) -> str:
         return json.dumps({"success": False, "error": str(e)}, ensure_ascii=False)
 
 
+def create_calendar_event(
+    title: str,
+    start_time: str,
+    end_time: str | None = None,
+    description: str = "",
+    location: str = "",
+) -> str:
+    """
+    Cria um novo evento/apontamento na agenda do Google Calendar do usuário.
+    start_time e end_time devem estar no formato ISO (ex: '2026-11-06T22:30:00-03:00')
+    ou apenas hora se for no dia de hoje (ex: '22:30').
+    """
+    try:
+        from datetime import datetime, timedelta
+        from pathlib import Path
+        from google.oauth2.credentials import Credentials
+        from googleapiclient.discovery import build
+
+        token_path = Path("token.json")
+        if not token_path.exists():
+            return json.dumps(
+                {"success": False, "error": "Credenciais do Google Calendar não encontradas (token.json ausente)."},
+                ensure_ascii=False,
+            )
+
+        creds = Credentials.from_authorized_user_file(str(token_path))
+        service = build("calendar", "v3", credentials=creds)
+
+        # Trata horário relativo ao dia atual se não vier em formato completo
+        now = datetime.now()
+        if "T" not in start_time:
+            # Formato HH:MM
+            m = re.match(r"^(\d{1,2}):(\d{2})$", start_time.strip())
+            if m:
+                hh, mm = int(m.group(1)), int(m.group(2))
+                start_dt = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+                # Se o horário já passou hoje, agenda para o dia seguinte
+                if start_dt < now - timedelta(hours=2):
+                    start_dt += timedelta(days=1)
+                start_iso = start_dt.strftime("%Y-%m-%dT%H:%M:00-03:00")
+            else:
+                start_iso = f"{now.strftime('%Y-%m-%d')}T{start_time}:00-03:00"
+        else:
+            start_iso = start_time
+
+        if not end_time or "T" not in end_time:
+            # Padrão: 1 hora de duração
+            try:
+                start_dt_obj = datetime.fromisoformat(start_iso)
+                end_iso = (start_dt_obj + timedelta(hours=1)).isoformat()
+            except Exception:
+                end_iso = start_iso
+        else:
+            end_iso = end_time
+
+        event_body = {
+            "summary": title,
+            "description": description,
+            "location": location,
+            "start": {"dateTime": start_iso, "timeZone": "America/Sao_Paulo"},
+            "end": {"dateTime": end_iso, "timeZone": "America/Sao_Paulo"},
+        }
+
+        created = service.events().insert(calendarId="primary", body=event_body).execute()
+        html_link = created.get("htmlLink", "")
+
+        return json.dumps(
+            {
+                "success": True,
+                "event_id": created.get("id"),
+                "title": title,
+                "start": start_iso,
+                "end": end_iso,
+                "link": html_link,
+                "message": f"Evento '{title}' criado com sucesso no Google Calendar para {start_iso}.",
+            },
+            ensure_ascii=False,
+        )
+
+    except Exception as e:  # noqa: BLE001
+        return json.dumps({"success": False, "error": f"Erro ao criar evento: {e}"}, ensure_ascii=False)
+
+
 # 2. Schemas JSON para Tool Calling
 
 LIST_FILES_SCHEMA = {
@@ -655,6 +738,40 @@ DELETE_FILE_SCHEMA = {
     },
 }
 
+CREATE_CALENDAR_EVENT_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "create_calendar_event",
+        "description": "Cria um novo evento, reunião ou compromisso diretamente na agenda do Google Calendar do usuário.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "description": "Título ou resumo do evento (ex: 'Reunião de Alinhamento', 'Teste', 'Dentista').",
+                },
+                "start_time": {
+                    "type": "string",
+                    "description": "Horário de início (ex: '22:30' para hoje, ou formato ISO '2026-11-06T22:30:00-03:00').",
+                },
+                "end_time": {
+                    "type": "string",
+                    "description": "Horário de término (opcional, padrão: 1 hora após o início).",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Descrição detalhada do evento (opcional).",
+                },
+                "location": {
+                    "type": "string",
+                    "description": "Local físico ou link da reunião (opcional).",
+                },
+            },
+            "required": ["title", "start_time"],
+        },
+    },
+}
+
 AVAILABLE_TOOLS = {
     "list_files": list_files,
     "read_file": read_file,
@@ -665,6 +782,7 @@ AVAILABLE_TOOLS = {
     "fetch_url": fetch_url,
     "remember_facts": remember_facts,
     "remember_fact": remember_facts,
+    "create_calendar_event": create_calendar_event,
 }
 
 ALL_TOOL_SCHEMAS = [
@@ -676,4 +794,5 @@ ALL_TOOL_SCHEMAS = [
     WEB_SEARCH_SCHEMA,
     FETCH_URL_SCHEMA,
     REMEMBER_FACTS_SCHEMA,
+    CREATE_CALENDAR_EVENT_SCHEMA,
 ]

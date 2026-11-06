@@ -8,8 +8,9 @@ import sys
 from pathlib import Path
 from google_auth_oauthlib.flow import InstalledAppFlow
 
-# Escopos de leitura e busca necessários para a Aigis
+# Escopos necessários para a Aigis (Leitura + Criação de Eventos no Calendário)
 SCOPES = [
+    "https://www.googleapis.com/auth/calendar.events",
     "https://www.googleapis.com/auth/calendar.readonly",
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/drive.readonly",

@@ -44,6 +44,7 @@ def should_enable_tools(user_text: str) -> bool:
         r"\b(executa|execute|executar|roda|rode|rodar|rodou|rodando)\b",
         r"\b(arquivo|pasta|diret[oó]rio|vault|nota|script|processo|desktop|área de trabalho)\b",
         r"\b(tool|caulinho|ferramenta|comando)\b",
+        r"\b(apontamento|evento|compromisso|reuni[aã]o|agenda|calend[aá]rio)\b",
         r"\b(tenta|tente|tentar|de novo|novamente)\b",
         r"\.txt\b|\.md\b|\.py\b|\.json\b|\.sh\b",
     ]
