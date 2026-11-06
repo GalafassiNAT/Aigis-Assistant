@@ -1,49 +1,62 @@
 # Project AIGIS — Local Operation & Setup Guide
 
-This document outlines the procedures to configure, boot, and run the **Aigis** ecosystem locally on Windows.
+This document outlines the procedures to configure, boot, and run the **Aigis** ecosystem locally on Linux or Windows.
 
 ---
 
 ## 1. Prerequisites
 
-- **Operating System:** Windows 10/11 x64
+- **Operating System:** Linux (Arch Linux / Ubuntu / Debian) or Windows 10/11 x64
 - **Recommended Hardware:**
-  - AMD Radeon GPU (e.g., RX 7600) or NVIDIA GPU with DirectML / ROCm / CUDA support
+  - AMD Radeon GPU (e.g., RX 7600 with ROCm/DirectML/Vulkan) or NVIDIA GPU with CUDA
   - Calibrated microphone and stereo audio output
 - **Software Environment:**
-  - Python 3.11 managed via Conda or Micromamba (`ai-assistant`)
-  - Docker Desktop (for PostgreSQL with pgvector)
-  - `llama-server.exe` (llama.cpp compiled with ROCm/DirectML/Vulkan)
+  - Python 3.10+ managed via Micromamba or Conda (`aigis`)
+  - Docker & Docker Compose (for PostgreSQL with pgvector and Redis)
+  - `llama-server` (llama.cpp compiled with GPU acceleration)
 
 ---
 
 ## 2. Service Startup Sequence
 
-### Step 1: Launch Database (PostgreSQL + pgvector)
+### Step 1: Launch Database & Event Bus (PostgreSQL + pgvector + Redis)
 From the project root directory:
-```powershell
+```bash
 docker compose up -d
 ```
-The `ai_assistant_postgres` container will start listening on port **5433**.
+Two containers will start listening:
+- `ai_assistant_postgres`: port **5433** (relational database, `pgvector` embeddings, shared timeline).
+- `ai_assistant_redis`: port **6379** (low-latency Pub/Sub event bus and ephemeral cache).
 
-### Step 2: Start Local LLM Server
-In a dedicated terminal, launch `llama-server` pointing to the Qwen2.5-Coder model:
-```powershell
-llama-server.exe -m "path\to\qwen2.5-coder-7b-instruct-q4_k_m.gguf" --port 8080 -ngl 99 --alias qwen-coder -c 8192
+### Step 2: Configure Google Workspace Integration (Optional but Recommended)
+To enable Google Calendar, intelligent Gmail triage, and Google Drive:
+1. Place your `credentials.json` file (downloaded from Google Cloud Console) in the root directory.
+2. Run the local OAuth2 setup helper:
+   ```bash
+   python tools/setup_google_auth.py
+   ```
+3. The `token.json` file will be generated automatically with authorized scopes.
+
+### Step 3: Start Local LLM Server
+In a dedicated terminal, launch `llama-server` pointing to the Qwen2.5 model:
+```bash
+./start_brain.sh
+# Or on Windows:
+# .\start_brain.ps1
 ```
 
-### Step 3: Launch Aigis Interfaces
+### Step 4: Launch Aigis Interfaces
 
-- **To start the PC Voice Assistant (Microphone + Speaker Loop):**
-  ```powershell
-  python interfaces/voice_assistant.py
-  ```
-- **To start the Discord Bot:**
-  ```powershell
+- **To start the Discord Bot (Channel Hub + Proactive Daemons):**
+  ```bash
   python interfaces/discord_bot.py
   ```
+- **To start the PC Voice Assistant (Microphone + Speaker Loop):**
+  ```bash
+  python interfaces/voice_assistant.py
+  ```
 - **To start the Interactive Developer CLI:**
-  ```powershell
+  ```bash
   python interfaces/cli.py
   ```
 
@@ -61,6 +74,9 @@ POSTGRES_DB=ai_assistant
 POSTGRES_PORT=5433
 DATABASE_URL=postgresql://ai_user:ai_password@localhost:5433/ai_assistant
 
+# Redis Event Bus
+REDIS_URL=redis://localhost:6379/0
+
 # Local LLM (llama-server)
 LLAMA_SERVER_URL=http://localhost:8080/v1
 LLAMA_MODEL_ALIAS=qwen-coder
@@ -76,7 +92,7 @@ DISCORD_OWNER_ID=your_discord_user_id
 
 The repository enforces strict formatting via **Ruff** defined in `pyproject.toml`. Before committing changes:
 
-```powershell
+```bash
 # Lint check rules and import sorting
 python -m ruff check core interfaces memory tools
 
