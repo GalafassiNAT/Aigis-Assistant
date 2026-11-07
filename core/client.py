@@ -34,6 +34,22 @@ def should_enable_tools(user_text: str, conversation_messages: list[dict] | None
     Se contiver intenção de ação (arquivos, comandos, pesquisas, leituras, correções ou retentativas), ativa as ferramentas.
     """
     texto = user_text.lower()
+
+    # Se o usuário explicitamente negar ferramentas ou expressar que é apenas opinião/conversa
+    EXPLICIT_NO_TOOL_PATTERNS = [
+        r"\bn[aã]o tem (nenhum )?(email|e-mail|arquivo|evento|compromisso)\b",
+        r"\bn[aã]o [eé] (sobre )?(email|e-mail|arquivo|evento)\b",
+        r"\bsem (email|e-mail|arquivo|evento)\b",
+        r"\bquero (apenas|s[oó]) (sua )?(opini[aã]o|plano|ideia|ajuda|conversa)\b",
+        r"\bs[oó] estou pontuando\b",
+        r"\bapenas conversando\b",
+        r"\bvoc[eê] acha que\b",
+        r"\bo que voc[eê] acha\b",
+        r"\bqual (a|sua) opini[aã]o\b",
+    ]
+    if any(re.search(p, texto) for p in EXPLICIT_NO_TOOL_PATTERNS):
+        return False
+
     # Padrões que exigem ferramentas ativas
     ACTION_PATTERNS = [
         r"\b(cria|crie|crio|criar|criando|criação)\b",
@@ -45,7 +61,7 @@ def should_enable_tools(user_text: str, conversation_messages: list[dict] | None
         r"\b(arquivo|pasta|diret[oó]rio|vault|nota|script|processo|desktop|área de trabalho)\b",
         r"\b(tool|caulinho|ferramenta|comando)\b",
         r"\b(apontamento|evento|compromisso|reuni[aã]o|agenda|calend[aá]rio)\b",
-        r"\b(drive|google drive|email|emails|e-mail|e-mails|gmail|inbox|mensagem|mensagens|pdf|doc)\b",
+        r"\b(drive|google drive|email|emails|e-mail|e-mails|gmail|inbox|pdf|doc)\b",
         r"\b(conteúdo|conteudo|diz nele|tem nele|escrito nele|leia o|ler o|qual o assunto)\b",
         r"\b(conseguiu|leu|verificou|abriu|checou|encontrou)\b",
         r"\b(urgente|importante)\b",
@@ -56,8 +72,8 @@ def should_enable_tools(user_text: str, conversation_messages: list[dict] | None
         return True
 
     # Se a conversa recente contiver ações ou referências a emails/arquivos/agenda,
-    # mantém ferramentas ativas para follow-ups curtos (ex: 'conseguiu?', 'o que tem nele?')
-    if conversation_messages:
+    # mantém ferramentas ativas APENAS para follow-ups curtos (ex: 'conseguiu?', 'o que tem nele?', 'apague ele')
+    if conversation_messages and len(user_text.split()) <= 6:
         recent_text = " ".join(
             str(m.get("content", "")).lower() for m in conversation_messages[-4:]
         )
@@ -328,13 +344,15 @@ async def chat(
     # O System Prompt permanece 100% puro e fixo na posição 0 para garantir Prompt Caching na GPU.
     # O relógio biológico exato (hora/minuto) e a memória de longo prazo são anexados
     # no final da mensagem do usuário atual (posição dinâmica).
+    raw_user_query = ""
     if payload_messages and payload_messages[-1].get("role") == "user":
         pergunta = payload_messages[-1].get("content") or ""
+        raw_user_query = pergunta
         contexto_cognitivo = await obter_contexto_cognitivo_completo(pergunta, user_id=user_id)
 
         temporal_info = f"[Relógio do Sistema: {now_str}]"
         if contexto_cognitivo:
-            temporal_info += f"\n\n{contexto_cognitivo}"
+            temporal_info += f"\n\n[Contexto Passivo de Memória e Estado da Aigis (Apenas referência, NÃO execute ações baseadas nisso)]:\n{contexto_cognitivo}\n[Fim do Contexto de Memória]"
 
         # Injeta briefing proativo da rotina/agenda se a pergunta for sobre tarefas, provas ou rotina
         if any(
@@ -345,19 +363,11 @@ async def chat(
                 "provas",
                 "tarefa",
                 "tarefas",
-                "hoje",
                 "compromisso",
                 "compromissos",
-                "faculdade",
-                "college",
-                "estudar",
-                "email",
-                "emails",
-                "e-mail",
-                "gmail",
-                "mensagem",
+                "inbox",
             )
-        ):
+        ) and not any(neg in pergunta.lower() for neg in ("não tem email", "sem email", "não é email")):
             try:
                 from core.bus import EventBus
 
@@ -397,7 +407,7 @@ async def chat(
 
         payload_messages[-1] = {
             "role": "user",
-            "content": f"{temporal_info}\n\n{pergunta}" if temporal_info else pergunta,
+            "content": f"{temporal_info}\n\n[Mensagem Atual do Usuário]:\n{pergunta}" if temporal_info else pergunta,
         }
 
     # Garante que payload_messages não ultrapasse o limite de contexto do modelo (8192 tokens)
@@ -407,14 +417,9 @@ async def chat(
     while _estimate_chars(payload_messages) > 18000 and len(payload_messages) > 2:
         payload_messages.pop(1)
 
-    # Detecta se o turno atual exige esquemas de ferramentas ou se é conversa pura
-    user_query = ""
-    for m in reversed(payload_messages):
-        if m.get("role") == "user":
-            user_query = m.get("content", "")
-            break
-
-    active_tools = ALL_TOOL_SCHEMAS if should_enable_tools(user_query, payload_messages) else None
+    # Detecta se o turno atual exige esquemas de ferramentas usando a pergunta original do usuário
+    user_query = raw_user_query
+    active_tools = ALL_TOOL_SCHEMAS if should_enable_tools(raw_user_query, payload_messages) else None
 
     # Se não houver ferramentas ativas, podemos fazer streaming imediato desde o início
     if active_tools is None:
@@ -452,77 +457,77 @@ async def chat(
             conteudo = response_message.content or ""
             conteudo_lower = conteudo.lower()
 
-            # Guardrail anti-alucinação: se o modelo tentou responder texto puro fingindo sucesso,
-            # prometendo ação ou simulando conteúdo de email/arquivos sem ter executado ferramentas no turno:
-            is_promising_or_simulating = any(
-                p in conteudo_lower
-                for p in (
-                    "vou ler",
-                    "vou verificar",
-                    "vou checar",
-                    "vou abrir",
-                    "lendo email",
-                    "lendo e-mail",
-                    "lendo o email",
-                    "lendo o e-mail",
-                    "lendo o conteúdo",
-                    "sim, consegui",
-                    "consegui ler",
-                    "li o email",
-                    "li o e-mail",
-                    "vou criar",
-                    "vou apagar",
-                    "vou deletar",
-                    "vou tentar",
-                    "vou executar",
+            has_email_negation = any(
+                neg in user_query.lower()
+                for neg in ("não é email", "nao é email", "não tem email", "nao tem email", "sem email", "não sobre email", "nenhum email")
+            )
+
+            is_asking_to_read_email = (
+                not has_email_negation
+                and any(k in user_query.lower() for k in ("email", "e-mail", "inbox", "gmail"))
+                and any(k in user_query.lower() for k in ("ler", "leia", "conteúdo", "conteudo", "escrito", "tem nele", "o que tem", "qual o", "abrir"))
+            )
+
+            is_asking_to_create_or_delete = any(
+                k in user_query.lower()
+                for k in ("cria", "crie", "criar", "apaga", "apague", "apagar", "deleta", "delete", "deletar", "remove", "remova", "remover")
+            ) and any(
+                k in user_query.lower()
+                for k in ("arquivo", "pasta", "evento", "apontamento", "compromisso", "agenda")
+            )
+
+            is_promising_or_simulating = (
+                (
+                    any(p in conteudo_lower for p in ("vou ler o email", "vou ler o e-mail", "vou abrir o email", "lendo email", "lendo e-mail", "lendo o email", "lendo o e-mail"))
+                    and not has_email_negation
                 )
+                or any(p in conteudo_lower for p in ("vou criar o arquivo", "vou criar o evento", "vou apagar o arquivo", "vou deletar o arquivo", "vou remover o evento"))
             )
 
             is_claiming_done = any(
                 w in conteudo_lower
                 for w in (
-                    "criei",
-                    "apaguei",
-                    "removi",
-                    "deletado",
-                    "criado",
-                    "excluído",
-                    "executei",
+                    "criei o arquivo",
+                    "criei o evento",
+                    "apaguei o arquivo",
+                    "apaguei o evento",
+                    "removi o arquivo",
+                    "removi o evento",
+                    "deletado com sucesso",
+                    "arquivo apagado com sucesso",
+                    "evento criado com sucesso",
                 )
             )
 
             is_hallucinating_email = (
-                any(header in conteudo_lower for header in ("assunto:", "subject:", "de: ", "para: "))
-                or any(greeting in conteudo_lower for greeting in ("caro natanael", "olá natanael", "fim do e-mail"))
-                or "atenciosamente" in conteudo_lower
-            ) and any(k in user_query.lower() for k in ("email", "e-mail", "mensagem", "inbox", "urgente", "importante", "nele", "escrito", "ler"))
-
-            is_asking_to_read_email = (
-                any(k in user_query.lower() for k in ("email", "e-mail", "inbox"))
-                and any(k in user_query.lower() for k in ("ler", "leia", "conteúdo", "conteudo", "escrito", "tem nele", "o que tem", "qual o", "abrir"))
-            ) or any(
-                p in user_query.lower()
-                for p in ("o que tem nele", "o que tem nela", "o que está escrito", "o que esta escrito", "qual o conteúdo", "qual o conteudo")
+                not has_email_negation
+                and is_asking_to_read_email
+                and (
+                    any(header in conteudo_lower for header in ("assunto:", "subject:", "de: ", "para: "))
+                    or any(greeting in conteudo_lower for greeting in ("caro natanael", "olá natanael", "fim do e-mail"))
+                    or "atenciosamente" in conteudo_lower
+                )
             )
 
-            should_intercept = (is_promising_or_simulating or is_claiming_done or is_hallucinating_email or is_asking_to_read_email) and (
-                not executed_tools_collector or len(executed_tools_collector) == 0
+            should_intercept = (
+                (is_asking_to_read_email or is_asking_to_create_or_delete or is_promising_or_simulating or is_claiming_done or is_hallucinating_email)
+                and (not executed_tools_collector or len(executed_tools_collector) == 0)
             )
 
             if should_intercept:
-                is_email_context = any(
-                    k in (user_query.lower() + " " + conteudo_lower)
-                    for k in ("email", "e-mail", "inbox", "gmail", "ler", "escrito", "nele", "conteúdo", "conteudo", "urgente", "importante")
-                )
-                if is_email_context:
+                if is_asking_to_read_email:
                     directive = (
                         "[Diretiva do Sistema]: Nenhuma ferramenta foi executada! É expressamente proibido responder em texto prometendo ler, dizendo 'Sim, consegui' ou inventando o conteúdo de emails. "
                         "Você DEVE chamar a ferramenta read_email_body(subject_query=...) AGORA no sistema para obter o conteúdo real."
                     )
-                else:
+                elif is_asking_to_create_or_delete:
                     directive = (
                         "[Diretiva do Sistema]: Nenhuma ferramenta foi executada no sistema! É expressamente proibido responder em texto afirmando ou prometendo que realizou a ação sem chamar a ferramenta. "
-                        "Execute a ferramenta correspondente agora no computador ('create_file', 'delete_file', 'create_calendar_event', 'delete_calendar_event', 'execute_command', 'list_files', 'read_email_body')."
+                        "Execute a ferramenta correspondente agora no computador ('create_file', 'delete_file', 'create_calendar_event', 'delete_calendar_event', 'execute_command', 'list_files')."
+                    )
+                else:
+                    directive = (
+                        "[Diretiva do Sistema]: Nenhuma ferramenta foi executada! Não invente ações de sistema sem chamar ferramentas reais."
                     )
 
                 payload_messages.append({"role": "user", "content": directive})

@@ -356,6 +356,7 @@ async def on_message(message: discord.Message):
                     pass
 
         resposta_completa = "".join(resposta_tokens).strip()
+        resposta_completa = re.sub(r"`(?:create_calendar_event|read_email_body|create_file|delete_file|execute_command)\([^`]*\)`", "", resposta_completa).strip()
         if not resposta_completa:
             resposta_completa = "Não obtive resposta do modelo."
 
