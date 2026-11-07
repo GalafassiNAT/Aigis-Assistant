@@ -32,6 +32,7 @@ A maioria dos assistentes de inteligência artificial atuais reside na nuvem e o
 
 ### Documentação Detalhada
 - 📐 [Arquitetura do Sistema](docs/ARCHITECTURE.md)
+- 🎓 [Proposta de Pesquisa / TCC (UTFPR)](docs/TCC_RESEARCH_PROPOSAL.md)
 - 🚀 [Guia de Operação e Setup Local](docs/OPERATION_GUIDE.md)
 - 🧠 [Plano de Fine-Tuning LoRA](docs/LORA_FINETUNING_PLAN.md)
 - 🔌 [Análise de Acoplamento e Extensibilidade](docs/EXTENSIBILITY_AND_COUPLING.md)
@@ -63,6 +64,7 @@ Most modern AI assistants live in the cloud as passive, isolated text chatbots. 
 
 ### Detailed Documentation
 - 📐 [System Architecture](docs/ARCHITECTURE_EN.md)
+- 🎓 [Capstone & Research Proposal (UTFPR)](docs/TCC_RESEARCH_PROPOSAL_EN.md)
 - 🚀 [Local Operation & Setup Guide](docs/OPERATION_GUIDE_EN.md)
 - 🧠 [LoRA Fine-Tuning Plan](docs/LORA_FINETUNING_PLAN_EN.md)
 - 🔌 [Coupling & Extensibility Analysis](docs/EXTENSIBILITY_AND_COUPLING_EN.md)
